@@ -1,2 +1,6 @@
-# machine-churning
-GR5243 Stats
+# Final Project
+
+## Data Files
+
+- Uncleaned Data
+- Cleaned Data
