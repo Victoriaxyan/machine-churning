@@ -10,10 +10,15 @@ How can we predict the intensity of the 2018-2019 flu season given data from pre
 
 ## Links
 https://gis.cdc.gov/grasp/fluview/fluportaldashboard.html
+
 This is the CDC’s Flu Portal Dashboard. It provides data and visualizations of flu incidence in the USA.
+
 https://www.cdc.gov/flu/fluvaxview/reportshtml/trends/index.html
+
 This link, also from the CDC, provides data on the amount of people in America who received the flu vaccine each year.
+
 https://www.cdc.gov/flu/about/burden/index.html?CDC_AA_refVal=https%3A%2F%2Fwww.cdc.gov%2Fflu%2Fabout%2Fdisease%2Fburden.htm
+
 This link provides data on the number of flu deaths each year.
 
 ## Description 
