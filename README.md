@@ -1,4 +1,2 @@
 # machine-churning
-GR5243
-
-print("hello world!")
+GR5243 Stats
