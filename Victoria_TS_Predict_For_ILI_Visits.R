@@ -27,7 +27,7 @@ acf(log.ili.d1, lag.max = 50, main = "acf of first 50 lags")
 log.ili.d2 <- diff(log.ili.d1, 52)
 plot(log.ili.d2)
 acf(log.ili.d2,lag.max = 300) #seasonal part, tails off
-acf(log.ili.d2, lag.max = 52) #non-seasonal part, tails off
+acf(log.ili.d2, lag.max = 52) #non-season al part, tails off
 pacf(log.ili.d2, lag.max = 400) #seasonal part, cuts off after lag 1s
 pacf(log.ili.d2, lag.max = 60) #non-seasonal part, cutss off after lag 1
 
