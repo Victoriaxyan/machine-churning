@@ -1,9 +1,8 @@
 # Final Project
 
-## Data Files of Git collaboration
+## Data Files of Git collaborations
 
-- Uncleaned Data
-- Cleaned Data
+- Uncleaned and Cleaned Data
 
 ## Topic
 How can we predict the intensity of the 2018-2019 flu season given data from previous flu seasons?
