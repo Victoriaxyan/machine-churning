@@ -1,4 +1,4 @@
-# Final Project
+# Checkpoint 2
 
 ## Data Files of Git collaborations
 
@@ -48,3 +48,27 @@ We have already finished the data collecting, and moving on to data cleaning par
 - Total number of people vaccinated, from year 2010 to 2019.
 
 We have done some preliminary data cleaning, such as merging yearly datasets of the percentage of influenza visits nationwide into one large dataset. We have also done some exploratory research on prior time series models, in particular for influenza to see if there are some best practices and underexplored avenues of research that we can pursue. 
+
+# Checkpoint 3
+
+## Topic
+
+How can we predict the intensity of the 2018-2019 flu season given data from previous flu seasons?
+
+## Link to Data
+
+https://github.com/Victoriaxyan/machine-churning/tree/master/UncleanedData
+
+## Current State of the Project
+
+We have cleaned our data already, converting the weekly records into monthly, for two types of illness - H1N1 and H3. Accordingly, we created SARIMA time series models for nation-wide positive tests of H1N1 and H3, from 2010 to 2018. Based on the models we created, we made predictions of positive tests of these illnesses from 2018 to 2019. We are moving on to creating machine learning models to make more precise predictions.
+
+## Overview of Models
+
+The model we have already built is a SARIMA model. We divided our data into a training set (Jan 2010 - Dec 2017) and a validation set (Jan 2018 - Dec 2018). We differenced the training data once, make the seasonality to be 12 (12 months in a year), chose the parameters of Auto Regressive and Moving Average parts according to AICC criteria. The final model we used for H1N1 data is SARIMA(1,0,1)x(0,1,1)_12.
+The variable for our model is simply the time variable: our goal is to see how the influence of illnesses changes over time. Core codes can be found in this link: https://github.com/Victoriaxyan/machine-churning/blob/master/Final-Project.R
+
+## Plans for improving the project
+- What machine learning models can be used to predict the illnesses? We want more accurate results.
+- How to design our Rshiny for representing our analysis?
+- Can we explore more on the relationship between vaccines and illnesses?
