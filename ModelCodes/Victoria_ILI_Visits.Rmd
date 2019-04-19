@@ -1,0 +1,159 @@
+---
+title: "Illness-Like Influenza Visits Exploration"
+author: 'Xueyan Zou UNI: xz2747'
+date: "2019/4/18"
+output:
+  prettydoc::html_pretty:
+  theme: cayman
+highlight: github
+---
+
+```{r library, warning=FALSE}
+#require(devtools)
+#devtools::install_github("cosname/recharts")
+library(forecast)
+library(data.table)
+library(DT)
+#library(recharts)
+library(ggplot2)
+```
+
+```{r readData}
+#ILI visits, national data (Oct 2010-Mar 2019)
+visits <- read.csv("../UncleanedData/flu_view_line(Topright  Chart)_national.csv")
+#population by year, national data
+popu <- fread("../UncleanedData/population_by_sex_age_2010-2017.csv")
+```
+
+# Data Cleaning
+
+```{r Data Cleaning}
+#####Visits data (national)#####
+################################
+
+#----Converting weekly records into monthly------
+visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
+                                       format = "%Y-%U-%u"))
+visits$date <- paste(visits$YEAR,visits$month,sep="-")
+visits <- as.data.table(visits)
+datatable(head(visits[,1:9]))
+datatable(head(visits[,10:16]))
+
+#-----preparing data for modeling------
+
+#Part 1 (time series data): percentage of visits for ILI, National
+ili.percent <- visits[,.(percent = ILITOTAL/TOTAL.PATIENTS)]
+
+#Part 2 (age group data): ILI visits according to age group
+age.groups <- names(visits)[c(4:6,8:9)]
+ili.age <- visits[,c(2:6,8:9,15:16)]
+ili.age <- ili.age[, lapply(.SD, "sum"), .SDcols = age.groups, by = date]
+ili.age[, year:= substr(date, start = 1, stop = 4)]
+
+######Population data(national)######
+#####################################
+
+#-----combining population according to age groups-----
+popu.raw <- popu[,c(-1,-3,-4)]
+#grouping
+popu.raw[,Age.Group:=ifelse(AGE%in%(0:4), age.groups[1],
+                            ifelse(AGE%in%(5:24), age.groups[2],
+                                   ifelse(AGE%in%(25:49),age.groups[3],
+                                          ifelse(AGE%in%(50:64),age.groups[4],
+                                                 age.groups[5]))))]
+#change names to 2010-2017
+popu.years <- paste("20", 10:17, sep = "") 
+names(popu.raw)[c(-1,-10)] <- popu.years
+popu.age.groups <- popu.raw[,lapply(.SD, sum), .SDcols=popu.years, by=Age.Group]
+# original scale to large (billion), divide by 10e3 (40377546 -> 40378)
+popu.age <- cbind(Age.Groups = age.groups, round(popu.age.groups[,-1]/10^3,0))
+datatable(popu.age)
+```
+
+# Exploratory Data Analysis
+
+## 1. Time Series Model for Percentage of Total ILI visits, Weekly
+
+```{r eda_time, echo=FALSE}
+ts.ili.percent <- ts(ili.percent, frequency = 52)
+plot(ts.ili.percent, type = "l")
+
+#fitting a model using auto.arima
+m.auto <- auto.arima(ts.ili.percent)
+m.auto #best model: (2,0,1)(0,1,1)[52]
+arma <- m.auto$arma #subtracts the orders of SARIMA model
+
+#forecast
+m <- arima(ts.ili.percent, order = c(arma[1], arma[6], arma[2]), 
+            seasonal = list(order = c(arma[3], arma[7], arma[4]), period = 52)) 
+predictions <- predict(m, n.ahead = 52)$pred
+
+#plot forecast
+plot(1:(length(ts.ili.percent) + length(predictions)), 
+     c(ts.ili.percent, predictions), type = 'l', col = 1, 
+     xlab = "week number starting from 40th week, 2010", 
+     ylab = "ILI visits percentage",
+     main = "predictions of ILI visits percentage")
+points((length(ts.ili.percent) + 1) : (length(ts.ili.percent) + length(predictions)), 
+       predictions, type = 'l', col = 2)
+
+plot(1:length(predictions), 
+     predictions, type = 'l', col = 2, 
+     xlab = "week number starting from 13th week, 2019", 
+     ylab = "ILI visits percentage",
+     main = "predictions of ILI visits percentage")
+```
+
+Conclusion: Strong Seasonality in ILI. Percentage of patients visiting the hospital for ILI may drop from now through summer, and getting back in the fall.
+
+## 2. ILI visits: Distribution by Age Groups
+
+```{r eda_age_group, warning=FALSE}
+
+#~~~~ plot the time series of visits for each age group ~~~~
+melt.ili.age <- melt(ili.age, variable.name = "Age.Groups", value.name = "visits")
+ggplot(data = melt.ili.age, 
+       aes(x = date, y = visits, color = Age.Groups, group = Age.Groups)) +
+  geom_line()
+
+#~~~~ pie plot of each age group ~~~~~~~
+
+#10 years total
+ili.age.all <- ili.age[,lapply(.SD, sum), .SDcols = age.groups]
+ili.age.all <- data.table(groups = age.groups, visits = t(ili.age.all)[,1])
+
+myLabel = c("0-4", "5-24", "25-49", "50-64", ">65")
+myLabel = paste(myLabel, "(", round(ili.age.all$visits / sum(ili.age.all$visits) * 100, 2),
+                "%)", sep = "") 
+
+ggplot(ili.age.all, aes(x = "", y = visits, fill = groups)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(title = "ILI visits of each age over 10 years") +
+  theme(axis.ticks = element_blank()) + 
+  theme(legend.title = element_blank(), legend.position = "right") + 
+  scale_fill_discrete(breaks = ili.age.all$groups, labels = myLabel)
+
+#~~~~ explore percentage between population ~~~~~~~
+
+melt.popu.age <- melt(popu.age, variable.name = "year", value.name = "population")
+ggplot(data = melt.popu.age, 
+       aes(x = year, y = population, color = Age.Groups, group = Age.Groups)) +
+  geom_line()
+#seems there is no significant change in population, so just take the mean over 8 years
+#and add it into ILI data
+ili.age.all[,population := rowMeans(popu.age[,-1])]
+ili.age.all[,weighted.visits := visits/population]
+
+ggplot(ili.age.all, aes(x = "", y = weighted.visits, fill = groups)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  labs(title = "weighted ILI visits by population of each age group over 10 years") +
+  theme(axis.ticks = element_blank()) + 
+  theme(legend.title = element_blank(), legend.position = "right") + 
+  scale_fill_discrete(breaks = ili.age.all$groups, labels = myLabel)
+```
+
+With age increasing, number of ILI visits decreases. It might be due to population: more population of juniors, less seniors. Another explanation: juniors tend to infected by ILI. Diving into the population data, we can divide the visits times by population for each group and see the percentage changing: it is obvious that infants and kids are more likely to visit the hospital for ILI.
+
+
