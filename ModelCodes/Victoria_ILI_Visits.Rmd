@@ -151,7 +151,7 @@ ggplot(ili.age.all, aes(x = "", y = weighted.visits, fill = groups)) +
   labs(title = "weighted ILI visits by population of each age group over 10 years") +
   theme(axis.ticks = element_blank()) + 
   theme(legend.title = element_blank(), legend.position = "right") + 
-  scale_fill_discrete(breaks = ili.age.all$groups, labels = myLabel)
+  scale_fill_discrete(breaks = ili.age.all$groups, labels = myLabel) 
 ```
 
 With age increasing, number of ILI visits decreases. It might be due to population: more population of juniors, less seniors. Another explanation: juniors tend to infected by ILI. Diving into the population data, we can divide the visits times by population for each group and see the percentage changing: it is obvious that infants and kids are more likely to visit the hospital for ILI.

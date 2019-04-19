@@ -1,39 +1,71 @@
-visits <- read.csv("~/Desktop/Columbia/GR5243/Final/Final_git/UncleanedData/flu_view_line(Topright  Chart)_national.csv")
-View(visits)
+# library
+library(forecast)
+library(data.table)
+library(DT)
 
-#Converting weekly records to monthly
-visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), format = "%Y-%U-%u"))
+
+visits <- read.csv("../UncleanedData/flu_view_line(Topright  Chart)_national.csv")
+
+######################
+####Data Cleaning#####
+######################
+
+#----Converting weekly records into monthly------
+visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
+                                       format = "%Y-%U-%u"))
 visits$date <- paste(visits$YEAR,visits$month,sep="-")
 visits <- as.data.table(visits)
+head(visits)
 
-#percentage of visits for ILI, National
+#-----preparing data for modeling------
+
+#Part 1 (time series data): percentage of visits for ILI, National
 ili.percent <- visits[,.(percent = ILITOTAL/TOTAL.PATIENTS)]
-ili.percent.ts <- ts(ili.percent[,percent]) #converting to time series
-plot(ili.percent.ts)
 
-#Variance isn't nearly constant. Try taking log
-log.ili <- log(ili.percent.ts)
-plot(log.ili)
+#Part 2 (age group data): ILI visits according to age group
+age.groups <- names(visits)[c(4:6,8:9)]
+ili.age <- visits[,c(2:6,8:9,15:16)]
+head(ili.age)
 
-#seems much better. Takes difference once 
-log.ili.d1 <- diff(log.ili,1)
-plot(log.ili.d1)
+#################################
+####Exploratory Data Analysis####
+#################################
 
-#acf of data.
-acf(log.ili.d1, lag.max = 100, main = "acf of first 100 lags")
-acf(log.ili.d1, lag.max = 50, main = "acf of first 50 lags")
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# time series model for percentage of total ILI visits, weekly
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-#strong seasonality at 52, take difference
-log.ili.d2 <- diff(log.ili.d1, 52)
-plot(log.ili.d2)
-acf(log.ili.d2,lag.max = 300) #seasonal part, tails off
-acf(log.ili.d2, lag.max = 52) #non-season al part, tails off
-pacf(log.ili.d2, lag.max = 400) #seasonal part, cuts off after lag 1s
-pacf(log.ili.d2, lag.max = 60) #non-seasonal part, cutss off after lag 1
+ts.ili.percent <- ts(ili.percent, frequency = 52)
 
-#try model SARIMA(1,1,0)*(1,0,0)_52
-m <- arima(log.ili, order = c(1, 1, 0), seasonal = list(order = c(1, 0, 0), period = 52))
-#try other models using auto.arima
-m.auto <- auto.arima(ts(ili.percent[,percent], frequency = 52), trace = T)$model
-tsdiag(m)
-tsdiag(m.auto)
+#fitting a model using auto.arima
+m.auto <- auto.arima(ts.ili.percent)
+m.auto #best model: (2,0,1)(0,1,1)[52]
+arma <- m.auto$arma #subtracts the orders of SARIMA model
+
+#forecast
+m <- arima(ts.ili.percent, order = c(arma[1], arma[6], arma[2]), 
+            seasonal = list(order = c(arma[3], arma[7], arma[4]), period = 52)) 
+predictions <- predict(m, n.ahead = 52)$pred
+
+par(mfrow = c(2,1))
+plot(1:(length(ts.ili.percent) + length(predictions)), 
+     c(ts.ili.percent, predictions), type = 'l', col = 1, 
+     xlab = "week number", ylab = "ILI visits percentage",
+     main = "predictions of ILI visits percentage")
+points((length(ts.ili.percent) + 1) : (length(ts.ili.percent) + length(predictions)), 
+       predictions, type = 'l', col = 2)
+
+plot(1:length(predictions), 
+     predictions, type = 'l', col = 2, 
+     xlab = "week number starting from 13th week, 2019", 
+     ylab = "ILI visits percentage",
+     main = "predictions of ILI visits percentage")
+
+# > Conclusion: Strong Seasonality in ILI. Percentage of patients visiting the hospital for ILI may drop from now through summer, and getting back in the fall.
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ILI visits: Distribution by Age Groups
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
