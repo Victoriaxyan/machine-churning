@@ -1,3 +1,21 @@
+#Some thoughts for the visualization
+- Part 1: look at the time plot of the weekly total reported ILI from 2010-2018
+
+- Part 2:
+  - 1. Focus on those years with high total ILI, and show percentage of total reported ILI to total         population by HHS Region/State (in shiny, we can change year + flu type)
+  - 2. For the region that was hit the most, break down by age group
+
+
+
+- Part 3:
+  -1. 2018's vaccine was only 36% effective against influenza A and B, and 25% effective against the       most common strain, H3N2.
+  -2.  Look at 2018 data by state/HHS region and identify those regions that were most influenced by       A/B/H3N2.
+
+
+
+
+
+
 # Checkpoint 2
 
 ## Data Files of Git collaborations
