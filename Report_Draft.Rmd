@@ -114,7 +114,7 @@ ggplot() +
   #ggtitle("Time Plot of the Weekly Total Reported Influenza Like Illnesses in the US (2010-2019)")+
   labs(caption='Figure 1. Influenza-Like Illness is defined as fever and a cough and/or a sore throat in the absence of a known cause other than flu\nData Source: CDC Weekly US Influenza Surveillance Report')+
   theme_economist_white()+
-  xlab("Year") + ylab("Percentage of ILI patients")+
+  xlab("Year") + ylab("Number of ILI patients")+
   theme(plot.title = element_text(hjust=0.5))+
   theme (plot.caption=element_text(hjust=0))+
   scale_x_date(date_breaks = "1 year", date_labels ='%Y')+
