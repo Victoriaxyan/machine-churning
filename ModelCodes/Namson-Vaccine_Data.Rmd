@@ -22,6 +22,8 @@ library(lubridate)
 library(data.table)
 library(DT)
 library(ggplot2)
+library(zoo)
+
 
 visits <- read_csv("C:/Users/NAMSON/Desktop/N.N.L/clouds/Dropbox/homework/21st grade/Applied Data Science/Final_Project/Data/flu_view_line(Topright  Chart)_national.csv")
 vaccines <- read_csv("C:/Users/NAMSON/Desktop/N.N.L/clouds/Dropbox/homework/21st grade/Applied Data Science/Final_Project/Data/usa_vaccination_data.csv")
@@ -41,7 +43,6 @@ total <- merge(monthly_data,newdata,by=c("year","month"))
 total$ili.percent <- total$ILITOTAL / total$TOTAL.PATIENTS
 total$YEAR <- NULL
 total$date <- paste0(total$year, "-", total$month)
-library(zoo)
 total$date <- as.Date(as.yearmon(total$date, "%Y-%m"))
 total <- dplyr::arrange(total, date)
 total <- transform(total, percent.index=100*total$ili.percent/total$ili.percent[1], vaccine.index=100*total$rate/total$rate[1])

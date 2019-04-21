@@ -225,8 +225,13 @@ library(dplyr)</code></pre>
 ##     between, first, last</code></pre>
 <pre class="r"><code>library(DT)
 library(ggplot2)
-
-visits &lt;- read_csv(&quot;C:/Users/NAMSON/Desktop/N.N.L/clouds/Dropbox/homework/21st grade/Applied Data Science/Final_Project/Data/flu_view_line(Topright  Chart)_national.csv&quot;)</code></pre>
+library(zoo)</code></pre>
+<pre><code>## 
+## Attaching package: 'zoo'</code></pre>
+<pre><code>## The following objects are masked from 'package:base':
+## 
+##     as.Date, as.Date.numeric</code></pre>
+<pre class="r"><code>visits &lt;- read_csv(&quot;C:/Users/NAMSON/Desktop/N.N.L/clouds/Dropbox/homework/21st grade/Applied Data Science/Final_Project/Data/flu_view_line(Topright  Chart)_national.csv&quot;)</code></pre>
 <pre><code>## Warning: Missing column names filled in: 'X1' [1]</code></pre>
 <pre><code>## Parsed with column specification:
 ## cols(
@@ -269,13 +274,7 @@ total &lt;- merge(monthly_data,newdata,by=c(&quot;year&quot;,&quot;month&quot;))
 total$ili.percent &lt;- total$ILITOTAL / total$TOTAL.PATIENTS
 total$YEAR &lt;- NULL
 total$date &lt;- paste0(total$year, &quot;-&quot;, total$month)
-library(zoo)</code></pre>
-<pre><code>## 
-## Attaching package: 'zoo'</code></pre>
-<pre><code>## The following objects are masked from 'package:base':
-## 
-##     as.Date, as.Date.numeric</code></pre>
-<pre class="r"><code>total$date &lt;- as.Date(as.yearmon(total$date, &quot;%Y-%m&quot;))
+total$date &lt;- as.Date(as.yearmon(total$date, &quot;%Y-%m&quot;))
 total &lt;- dplyr::arrange(total, date)
 total &lt;- transform(total, percent.index=100*total$ili.percent/total$ili.percent[1], vaccine.index=100*total$rate/total$rate[1])
 
