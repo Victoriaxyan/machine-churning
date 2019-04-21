@@ -1,3 +1,18 @@
+#What are the answers we are trying to find?
+We will predict weekly ILINet levels for season 2018-2019 at national and state level. This will help us get answers to the following questions:
+
+1.	Season onset: For 2018 -2019, what would be the first week when ILInet would be above baseline and will remain there for at least two more weeks? We will find the season onset at national level and also the season onset for the states that have been historically most affected by flu?
+
+2.	Peak week: For 2018- 2019, which week had the highest ILINet during the whole season at the national level? Is there a possiblity to have more than one peak week in a given season.
+
+3.	Peak intensity: What is the highest value that ILINet  will reach during the season at national level and for key states?
+
+By marrying these results into our EDA of the CDC data, we will be able to offer some exciting insights. e.g.  New York is going to be affected majorly by flu. The season onset will be week xx and the predicted ILINet for the entire season is xx. We are aware that age group xx gets affected the most in NY. Additionally, our analysis shows that virus xx affects NY the most. Precautionary measures should be taken accordingly.
+
+Some interesting visualizations:
+-Comparing season onsets and peak intensities state wise
+
+
 #Some thoughts for the visualization
 - Part 1: look at the time plot of the weekly total reported ILI from 2010-2018
 
