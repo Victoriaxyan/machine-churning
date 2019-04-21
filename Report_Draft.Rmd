@@ -148,7 +148,7 @@ Obvious seasonality in overall ILI visits time series. However, when looking sep
 ### b. Age Groups and Population Exploration
 
 ```{r eda_age_group, warning=FALSE}
-#clean code for area plot
+#Part 1: area plot
 ili1$AGE.25.64<-0
 
 area_dat= ili1 %>%  
