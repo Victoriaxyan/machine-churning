@@ -1,0 +1,59 @@
+---
+title: "Final_Project"
+author: "Namson Ngo-Le"
+date: "April 15, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(readr)
+library(dplyr)
+library(lubridate)
+library(data.table)
+library(DT)
+library(ggplot2)
+
+visits <- read_csv("C:/Users/NAMSON/Desktop/N.N.L/clouds/Dropbox/homework/21st grade/Applied Data Science/Final_Project/Data/flu_view_line(Topright  Chart)_national.csv")
+vaccines <- read_csv("C:/Users/NAMSON/Desktop/N.N.L/clouds/Dropbox/homework/21st grade/Applied Data Science/Final_Project/Data/usa_vaccination_data.csv")
+
+visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
+                                       format = "%Y-%U-%u"))
+visits$date <- paste(visits$YEAR,visits$month,sep="-")
+visits <- as.data.table(visits)
+
+monthly_data <- visits %>% 
+  group_by(YEAR, month) %>%                            # multiple group columns
+   summarise_at(c("ILITOTAL", "TOTAL.PATIENTS"), sum, na.rm = TRUE)
+monthly_data$year <- monthly_data$YEAR
+newdata <- vaccines[which(vaccines$age=='>6 months'),]
+newdata$month <- match(newdata$month,month.abb)
+total <- merge(monthly_data,newdata,by=c("year","month"))
+total$ili.percent <- total$ILITOTAL / total$TOTAL.PATIENTS
+total$YEAR <- NULL
+total$date <- paste0(total$year, "-", total$month)
+library(zoo)
+total$date <- as.Date(as.yearmon(total$date, "%Y-%m"))
+total <- dplyr::arrange(total, date)
+total <- transform(total, percent.index=100*total$ili.percent/total$ili.percent[1], vaccine.index=100*total$rate/total$rate[1])
+
+ggplot(total, aes(date)) + 
+  geom_line(aes(y = ili.percent, colour = "ili.percent")) + 
+  geom_line(aes(y = rate, colour = "rate"))
+
+ggplot(total, aes(date)) + 
+  geom_line(aes(y = percent.index, colour = "percent.index"), size=1.5) + 
+  geom_line(aes(y = vaccine.index, colour = "vaccine.index"), size=1.5) + ylab("Indexed Variable") + xlab("Date")
+
+
+```
+
