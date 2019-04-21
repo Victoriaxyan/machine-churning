@@ -105,7 +105,7 @@ ggplot() +
   theme (plot.caption=element_text(hjust=0))+
   scale_x_date(date_breaks = "1 year", date_labels ='%Y')+
   geom_vline(xintercept = as.numeric(as.Date(c('2018-2-1'))),linetype=4,col="brown")+
-  geom_text(data=d,mapping=aes(x=date,y=0,label=event),size=3.5,color='brown',angle=90,vjust=2.3,hjust=.1)
+  geom_text(data=d,mapping=aes(x=date,y=0,label=event),size=3.5,color='brown',angle=90,vjust=1.3,hjust=.1)
 
 #PLOT 2: this plot is for the total number of patients
 ggplot() +
@@ -114,12 +114,12 @@ ggplot() +
   #ggtitle("Time Plot of the Weekly Total Reported Influenza Like Illnesses in the US (2010-2019)")+
   labs(caption='Figure 1. Influenza-Like Illness is defined as fever and a cough and/or a sore throat in the absence of a known cause other than flu\nData Source: CDC Weekly US Influenza Surveillance Report')+
   theme_economist_white()+
-  xlab("Year") + ylab("Percentage of ILI patients")+
+  xlab("Year") + ylab("Number of ILI patients")+
   theme(plot.title = element_text(hjust=0.5))+
   theme (plot.caption=element_text(hjust=0))+
   scale_x_date(date_breaks = "1 year", date_labels ='%Y')+
   geom_vline(xintercept = as.numeric(as.Date(c('2018-2-1'))),linetype=4,col="brown")+
-  geom_text(data=d,mapping=aes(x=date,y=0,label=event),size=3.5,color='brown',angle=90,vjust=2.3,hjust=.1)
+  geom_text(data=d,mapping=aes(x=date,y=0,label=event),size=3.5,color='brown',angle=90,vjust=1.3,hjust=.1)
 
 ```
 
