@@ -148,6 +148,39 @@ Obvious seasonality in overall ILI visits time series. However, when looking sep
 ### b. Age Groups and Population Exploration
 
 ```{r eda_age_group, warning=FALSE}
+#clean code for area plot
+ili1$AGE.25.64<-0
+
+area_dat= ili1 %>%  
+  filter(YEAR==2018,month>=1) %>%
+  select(Percentage,Dates,WEEK,YEAR,i=ILITOTAL,young =`AGE.0.4`, 
+         young2 = `AGE.5.24`,mid =`AGE.25.49`,old = `AGE.50.64`,old2 = `AGE.65` ) %>% 
+  mutate(i=as.numeric(i),young  =as.numeric(young)+as.numeric(young2),
+         mid=as.numeric(mid),old =as.numeric(old)+as.numeric(old2) )%>%
+  #mutate(Dates = seq.Date(as.Date("2018/01/01"),as.Date("2019/03/01"),by="weeks")) %>%
+  gather(key=ageGroup,value = ageGroupTotal,c(young,mid,old),factor_key=T)
+
+area_dat2<-area_dat %>%
+  group_by(Dates,ageGroup)%>%
+  summarise(ageTotal=sum(ageGroupTotal))
+
+#area plot by age group
+ggplot() +
+  geom_area(data = area_dat2, aes(x = Dates, y = ageTotal, fill = ageGroup)) +
+  scale_fill_brewer(name="Age Groups",labels = c("0-24 years","25-49 years","50+ years"),palette="YlGn",direction = -1) +
+  scale_x_date(date_breaks = "2 weeks")+
+  labs(x="Date",y="Flu Cases by Age Group",
+       caption = "Figure 3: The total number flu cases broken down by cases\nof patients below the age of 24, between the age 25 and 49, and above the age of 50.\nData Source: CDC Flu View")+
+  theme(plot.caption = element_text(hjust=0))+theme_classic()+
+  scale_x_date(date_breaks = "1 month", date_labels ='%Y/%m')
+
+```
+
+
+
+
+
+```{r eda_age_group, warning=FALSE}
 #~~~~~ explore population features ~~~~~~~
 
 # Does population change significantly over time?
