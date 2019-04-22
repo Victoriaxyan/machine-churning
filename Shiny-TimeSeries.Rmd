@@ -1,0 +1,172 @@
+---
+title: ""
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    theme: sandstone
+    css: styles.css
+---
+
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(flexdashboard)
+library(readxl)
+library(readr)
+library(shiny)
+library(rmarkdown)
+library(knitr)
+library(DT)
+library(ggplot2)
+library(ggthemes)
+library(tidyr)
+library(shinythemes)
+```
+
+
+```{r read_data, include=FALSE}
+#flu_view_line(Topright  Chart)_national.csv
+visits <- read_csv("Data/flu_view_line(Topright  Chart)_national.csv")
+visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
+                                       format = "%Y-%U-%u"))
+visits$date <- paste(visits$YEAR,visits$month,sep="-")
+
+#add the years
+visits$duration<-c(rep("2010-2011",52),
+                   rep("2011-2012",52),
+                   rep("2012-2013",52),
+                   rep("2013-2014",52),
+                   rep("2014-2015",52),
+                   rep("2015-2016",53),
+                   rep("2016-2017",52),
+                   rep("2017-2018",52),
+                   rep("2018-2019",25))
+```
+
+```{r constants}
+select.year<-c("All","2010-2011","2011-2012","2012-2013","2013-2014",
+                          "2014-2015","2015-2016","2016-2017","2017-2018",
+                          "2018-2019")
+
+```
+
+Time Series
+===================================
+
+
+Row {data-height=1000}
+-------------------------------------
+
+```{r respondents}
+#draw the time series plot using visits data
+inputPanel(
+  selectInput(inputId = "year", label = "Select Year:", 
+              choices = select.year, selected = select.year[1]),
+  
+  checkboxInput(inputId = "age", label = "Breakdown by Age Groups:", value = F)
+)
+
+renderPlot({
+  
+   if(input$year == "All"){
+    ili1<-visits%>% 
+         mutate(Date = paste(YEAR, month,1,sep = "-"),
+                Dates=as.Date(Date,"%Y-%m-%d")) %>%
+         group_by(Dates) %>%
+         summarise(ilitotal=mean(ILITOTAL,na.rm = T),
+                totalp=mean(TOTAL.PATIENTS,na.rm = T))%>%
+         mutate(Percentage=round(100*ilitotal/totalp,2))
+    
+    d=data.frame(date=as.Date('2018-02-1'),event='2018-02-1')
+
+    
+    if(input$age==F){
+
+       p1<-ggplot() +
+        geom_line(data=ili1, aes(x =Dates, y = Percentage),size=1,col="darkblue")+
+        ggtitle("Percentage of Total Reported Influenza Like Illnesses in the US (2010-2019)")+
+        labs(caption='Influenza-Like Illness is defined as fever and a cough and/or a sore throat in the absence of a known cause other than flu\nData Source: CDC Weekly US Influenza Surveillance Report')+
+        theme_economist_white(base_size = 16)+
+        xlab("Year") + ylab("Percentage (%) of ILI patients")+
+        theme(plot.title = element_text(hjust=0.5))+
+        theme(plot.caption=element_text(hjust=0))+
+        scale_x_date(date_breaks = "1 year", date_labels ='%Y')+
+        geom_vline(xintercept = as.numeric(as.Date(c('2018-2-1'))),linetype=4,col="blue")+
+        geom_text(data=d,mapping=aes(x=date,y=0,label=event),size=5,
+            color='blue',angle=90,vjust=1.3,hjust=.1)
+    }
+    else{
+    ili2<-visits%>% 
+            mutate(Date = paste(YEAR, month,1,sep = "-"),
+            Percentage=ILITOTAL/TOTAL.PATIENTS,
+            Dates=as.Date(Date,"%Y-%m-%d")) 
+    
+    area_dat= ili2 %>%  
+          select(Percentage,Dates,YEAR,i=ILITOTAL,young =`AGE.0.4`, 
+             young2 = `AGE.5.24`,mid =`AGE.25.49`,old = `AGE.50.64`,old2 = `AGE.65` ) %>% 
+          mutate(i=as.numeric(i),young  =as.numeric(young)+as.numeric(young2),
+          mid=as.numeric(mid),old =as.numeric(old)+as.numeric(old2) ) %>%
+          gather(key=ageGroup,value = ageGroupTotal,c(young,mid,old),factor_key=T)
+
+    area_dat2<-area_dat %>%
+         group_by(Dates,ageGroup)%>%
+         summarise(ageTotal=sum(ageGroupTotal))
+
+    p1<-ggplot() +
+        geom_area(data = area_dat2, aes(x = Dates, y = ageTotal, fill = ageGroup)) +
+        scale_fill_brewer(name="Age Groups",labels = c("0-24 years","25-49 years",
+                          "50+ years"),palette="YlGn",direction = -1) +
+        labs(x="Date",y="Flu Cases by Age Group")+
+        theme(plot.caption = element_text(hjust=0))+theme_economist_white(base_size = 16)+
+        scale_x_date(date_breaks = "1 year", date_labels ='%Y/%m')
+    }
+  p1
+   }
+
+  else{
+    ili1<-visits%>% 
+         filter(duration==input$year)%>%
+         mutate(Date = paste(YEAR, month,1,sep = "-"),
+         Percentage=round(100*ILITOTAL/TOTAL.PATIENTS,2),
+         Dates=as.Date(Date,"%Y-%m-%d")) 
+    
+  area_dat= ili1 %>%  
+    filter(duration==input$year) %>%
+    select(Percentage,Dates,WEEK,YEAR,i=ILITOTAL,young =`AGE.0.4`, 
+         young2 = `AGE.5.24`,mid =`AGE.25.49`,old = `AGE.50.64`,old2 = `AGE.65` ) %>% 
+    mutate(i=as.numeric(i),young  =as.numeric(young)+as.numeric(young2),
+         mid=as.numeric(mid),old =as.numeric(old)+as.numeric(old2) )%>%
+  #mutate(Dates = seq.Date(as.Date("2018/01/01"),as.Date("2019/03/01"),by="weeks")) %>%
+  gather(key=ageGroup,value = ageGroupTotal,c(young,mid,old),factor_key=T)
+
+  area_dat2<-area_dat %>%
+    group_by(WEEK,ageGroup)%>%
+    summarise(ageTotal=sum(ageGroupTotal))
+    
+    if(input$age==F){
+      p1<-ggplot() +
+        geom_line(data=ili1, aes(x =WEEK, y = Percentage),size=1,col="darkblue")+
+        stat_smooth(color = "#FC4E07", fill = "#FC4E07",method = "loess")+
+        ggtitle("Percentage of Weekly Total Reported Influenza Like Illnesses in the US")+
+        labs(caption='Influenza-Like Illness is defined as fever and a cough and/or a sore throat in the absence of a known cause other than flu\nData Source: CDC Weekly US Influenza Surveillance Report')+
+        theme_economist_white(base_size = 16)+
+        xlab("Week") + ylab("Percentage (%) of ILI patients")+
+        theme(plot.title = element_text(hjust=0.5))+
+        theme (plot.caption=element_text(hjust=0))
+    }
+  else{
+    p1<-ggplot() +
+      geom_area(data = area_dat2, aes(x = WEEK, y = ageTotal, fill = ageGroup)) +
+      scale_fill_brewer(name="Age Groups",labels = c("0-24 years","25-49 years",
+                             "50+ years"),palette="YlGn",direction = -1) +
+      labs(x="Week",y="Flu Cases by Age Group")+
+      theme(plot.caption = element_text(hjust=0))+
+      theme_economist_white(base_size = 14)
+  }
+p1
+  }
+  
+})
+```
+
+
