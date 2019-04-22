@@ -51,6 +51,11 @@ ggplot(total, aes(date)) +
   geom_line(aes(y = ili.percent, colour = "ili.percent")) + 
   geom_line(aes(y = rate, colour = "rate"))
 
+```
+
+As we can see the percent of people vaccinated and the percent of hospital visits due to flu have very different ranges. Because of this I decided to index these two time series from the first data point.
+
+```{r plot2}
 ggplot(total, aes(date)) + 
   geom_line(aes(y = percent.index, colour = "percent.index"), size=1.5) + 
   geom_line(aes(y = vaccine.index, colour = "vaccine.index"), size=1.5) + ylab("Indexed Variable") + xlab("Date")
@@ -58,3 +63,4 @@ ggplot(total, aes(date)) +
 
 ```
 
+Here we can see some interesting observations. First, there are definite seasonality trends for both the percent of people vaccinated and the percent of hospital visits due to flu. Second, there appears to be a bit of a lagged effect - the percent of people who visit the hospital with the flu seems to consistently peak a bit before the peak of the percent of people vaccinated each season. Finally, while the percent of people vaccinated seems to remain fairly consistent from year to year, the percent of people afflicted with the flu exhibits a significant amount of volatility, from little in 2012-2013 to a lot in 2018-2019.
