@@ -1,0 +1,201 @@
+---
+title: "Study on Flu Seasons"
+subtitle: "Final Project of GR5243 - Group E"
+author: 'Xueyan Zou, Namson Ngo-Le, Rachel Wu, Saloni Mohan'
+date: "4/25/2019"
+output: ioslides_presentation
+---
+
+```{r library, warning=FALSE, echo=FALSE, message=FALSE}
+#require(devtools)
+#devtools::install_github("cosname/recharts")
+library(forecast)
+library(data.table)
+library(DT)
+#library(recharts)
+library(ggplot2)
+library(dplyr)
+library(ggthemes)
+library(tidyr)
+```
+
+## Introduction to the Problem: Influenza Prediction
+
+**How to predict the intensity of the 2018-2019 Influenza season?  **
+
+Why we are interested:
+
+- In recent years, flu-related deaths have ranged from about 12,000 to — in the worst year — 56,000 (CDC).
+
+- Knowing how to predict -> effective and timely precautionary measures.
+
+## Introduction to the Problem: Influenza Prediction
+
+**Intensity** is decided by the following criteria:
+
+- Number of visits to health care providers for flu
+
+- Number of positive tests on major flu types (H1, H3N2)
+
+Goal: to make predictions on the above criteria for the following groups:
+
+1. Region (National level, State level)
+
+2. Age Groups (Infants, Juniors, Seniors)
+
+
+## Data Overview: CDC Influenza Data
+
+CDC influenza data in the United States
+
+- National v.s. State
+
+- Patient **visit rates** to health care providers for influenza-like illness (ILI)
+
+- Specimens tested and **the number of positive tests for influenza**
+
+- Vaccination Data
+
+## Data demo: ILI visits, National
+
+```{r echo=FALSE}
+visits <- fread("../Data/flu_view_line(Topright  Chart)_national.csv")
+visits.cleaned <- visits[,c(2,3,4,5,6,8,9,10)]
+visits.cleaned
+```
+
+## Data demo: Positive Tests, National
+
+```{r echo=FALSE}
+flutype <- fread("../Data/National_Positive_tests_type.csv")
+flutype[,c(3,4,5,6,7,9,12)]
+```
+
+## Data demo: Vaccination, National
+
+```{r echo=FALSE}
+vaccine <- fread("../Data/usa_vaccination_data.csv")
+vaccine
+```
+
+## Analysis: Statistical Methods
+
+- Model: time series model *SARIMA*
+
+- Reason: The datasets we have are basically time series data. The most widely used model in time series predicting is *SARIMA* models.
+
+- Task: Selecting seasonal, differencing, autoregressive, and moving average parameters.  
+
+- Methodology: Looking at ACF and PACF lags, conduct cross validation and AICC criteria.
+
+## Implementation
+
+Example: visit rates for ILI.  
+
+```{r datacleaning_visits,echo=FALSE}
+ili.percent <- visits[YEAR!=2019,.(percent = ILITOTAL/TOTAL.PATIENTS, week = V1)] 
+ts.ili.percent <- ts(ili.percent[,percent], frequency = 52)
+visits.Apr2019 <- fread("../Data/FluView_LineChart_2019.csv", skip = 1)
+ili.2019 <- visits.Apr2019[YEAR==2019, .(percent = ILITOTAL/`TOTAL PATIENTS`)]
+```
+
+Choosing paramenters
+
+
+##Implementation: Fitting model
+
+We have chosen $(2,0,1)\times(0,1,1)_{52}$ as the best model for this data
+
+```{r}
+m <- arima(ts.ili.percent, order = c(2,0,1), 
+            seasonal = list(order = c(0,1,1), period = 52)) 
+m
+```
+
+## Implementation: Predicting
+
+```{r}
+predictions <- predict(m, n.ahead = 15)$pred
+```
+
+```{r echo=FALSE}
+par(mfrow=c(2,1))
+
+plot(1:(length(ts.ili.percent) + length(predictions)), 
+     c(ts.ili.percent, predictions), type = 'l', col = 1, 
+     xlab = "week number starting from 40th week, 2010", 
+     ylab = "ILI visits percentage",
+     main = "ILI visits percentage real data and predictions")
+points((length(ts.ili.percent) + 1) : (length(ts.ili.percent) + length(predictions)),
+       ili.2019[,percent], type = 'l', 
+       col = "dodgerblue") # real data for 2019 first 15 weeks
+points((length(ts.ili.percent) + 1) : (length(ts.ili.percent) + length(predictions)), 
+       predictions, type = 'l', col = "lightcoral") #predicted data for 2019 first 15 weeks
+legend("topleft", legend = c("real flu visits percent", "predicted flu visits percent"),
+       col = c("dodgerblue", "lightcoral"), pch = c("l","l"))
+
+predictions2019 <- predict(m, n.ahead = 52)$pred
+plot(1:length(predictions2019), 
+     predictions2019, type = 'l', col = "lightcoral", 
+     xlab = "week number in 2019", 
+     ylab = "ILI visits percentage",
+     main = "Predictions of ILI visits percentage in whole 2019")
+```
+
+## ILI Visits Overall Data
+
+```{r echo=FALSE, warning=FALSE}
+visits[,month:=lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
+                                       format = "%Y-%U-%u"))]
+visits[,date:=paste(visits$YEAR,visits$month,sep="-")]
+
+ili1<-visits%>% 
+  mutate(Date = paste(YEAR, month,1,sep = "-"),
+         Percentage=ILITOTAL/TOTAL.PATIENTS,
+          Dates=as.Date(Date,"%Y-%m-%d")) 
+
+d=data.frame(date=as.Date('2018-02-1'),event='2018-02-1')
+
+#PLOT 1: this plot is for the percentage
+ggplot() +
+  geom_line(data=ili1, aes(x =Dates, y = Percentage))+
+  geom_smooth(method='loess',se=F,span=0.5) +
+  #ggtitle("Time Plot of the Weekly Total Reported Influenza Like Illnesses in the US (2010-2019)")+
+  labs(caption='Figure 1. Influenza-Like Illness is defined as fever and a cough and/or a sore throat in the absence of a known cause other than flu\nData Source: CDC Weekly US Influenza Surveillance Report')+
+  theme_economist_white()+
+  xlab("Year") + ylab("Percentage of ILI patients")+
+  theme(plot.title = element_text(hjust=0.5))+
+  theme (plot.caption=element_text(hjust=0))+
+  scale_x_date(date_breaks = "1 year", date_labels ='%Y')+
+  geom_vline(xintercept = as.numeric(as.Date(c('2018-2-1'))),linetype=4,col="brown")+
+  geom_text(data=d,mapping=aes(x=date,y=0,label=event),size=3.5,color='brown',angle=90,vjust=1.3,hjust=.1)
+```
+
+## Analysis: ILI visits by Age group
+
+```{r echo=FALSE,warning=FALSE}
+ili1$AGE.25.64<-0
+
+area_dat= ili1 %>%  
+  filter(YEAR==2018,month>=1) %>%
+  select(Percentage,Dates,WEEK,YEAR,i=ILITOTAL,young =`AGE.0.4`, 
+         young2 = `AGE.5.24`,mid =`AGE.25.49`,old = `AGE.50.64`,old2 = `AGE.65` ) %>% 
+  mutate(i=as.numeric(i),young  =as.numeric(young)+as.numeric(young2),
+         mid=as.numeric(mid),old =as.numeric(old)+as.numeric(old2) )%>%
+  #mutate(Dates = seq.Date(as.Date("2018/01/01"),as.Date("2019/03/01"),by="weeks")) %>%
+  gather(key=ageGroup,value = ageGroupTotal,c(young,mid,old),factor_key=T)
+
+area_dat2<-area_dat %>%
+  group_by(Dates,ageGroup)%>%
+  summarise(ageTotal=sum(ageGroupTotal))
+
+#area plot by age group
+ggplot() +
+  geom_area(data = area_dat2, aes(x = Dates, y = ageTotal, fill = ageGroup)) +
+  scale_fill_brewer(name="Age Groups",labels = c("0-24 years","25-49 years","50+ years"),palette="YlGn",direction = -1) +
+  scale_x_date(date_breaks = "2 weeks")+
+  labs(x="Date",y="Flu Cases by Age Group",
+       caption = "Figure 3: The total number flu cases broken down by cases\nof patients below the age of 24, between the age 25 and 49, and above the age of 50.\nData Source: CDC Flu View")+
+  theme(plot.caption = element_text(hjust=0))+theme_classic()+
+  scale_x_date(date_breaks = "1 month", date_labels ='%Y/%m')
+```
