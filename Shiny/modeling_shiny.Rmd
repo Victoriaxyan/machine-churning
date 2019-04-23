@@ -54,7 +54,6 @@ Row {data-height=500}
 ```{r modeling}
 
 inputPanel(
-  helpText("Loading model..."),
   #select region
   selectInput(inputId= "Region", label = "Select Region Level:",
               choices = region.names, selected = region.names[1]),
@@ -69,7 +68,9 @@ inputPanel(
   #select length of original data
   numericInput(inputId = "Orig.Length",
                label = "Number of previous weeks:", min = 89, max = 445,
-               value = 178, step = 89)
+               value = 178, step = 89),
+  
+  helpText("Loading model, will take 10 seconds...")
 )
 
 renderPrint({
@@ -127,7 +128,8 @@ renderPlot({
     #state level
     if(input$data.type == datatype[1]){
       series <- visits.state[REGION==input$Region, 
-                             as.numeric(ILITOTAL)/as.numeric(`TOTAL PATIENTS`)] #visits
+                             na.omit(as.numeric(ILITOTAL)/as.numeric(`TOTAL PATIENTS`))] 
+      #visits
       #indx <- visits.state[REGION==input$Region, date]
     }
     else{
@@ -149,17 +151,21 @@ renderPlot({
     m.auto <- auto.arima(series, trace=T) 
     
     #forecast
-    predictions <- predict(m.auto, n.ahead = input$Pred.Length)$pred
+    pred.list <- forecast(m.auto, h = input$Pred.Length) #point forecasts and CIs
+    predictions <- pred.list$mean
 
     #plot forecast
-    pred <- data.table(week = 1:(input$Orig.Length + length(predictions)),
-                       type = c(rep("original data",input$Orig.Length),
-                                rep("predictions",length(predictions))),
-                       data = c(series[-1:(-(length(series)-input$Orig.Length))],
-                                predictions))
+    orig <- data.table(week = 1:input$Orig.Length,
+                       data = series[-1:(-(length(series)-input$Orig.Length))])
+    pred <- data.table(week = (input$Orig.Length+1):(input$Orig.Length+
+                                                       length(predictions)),
+                       data = c(predictions))
     
-    ggplot(data = pred, aes(x=week, y=data, col=type))+
-      geom_line(size=2)+
+    ggplot(data = orig, aes(x=week, y=data))+
+      geom_line(size = 2, col = "dodgerblue")+
+      geom_smooth(data = pred, aes(x=week, y=data, ymax=pred.list$upper[,2],
+                                   ymin=pred.list$lower[,2]),
+                  col = "LightCoral", size = 2, stat="identity")+
       labs(title = "Original data with Predictions")+
       theme(plot.title = element_text(hjust = 0.5))
   }}
