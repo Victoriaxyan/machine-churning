@@ -213,7 +213,7 @@ total <- transform(total, percent.index=100*total$ili.percent/total$ili.percent[
 
 ```
 
-```{r graph, echo = FALSE}
+```{r graph, echo = FALSE, fig.width=8,fig.height=3}
 ggplot(total, aes(date)) + 
   geom_line(aes(y = percent.index, colour = "percent.index"), size=1.5) + 
   geom_line(aes(y = vaccine.index, colour = "vaccine.index"), size=1.5) + ylab("Indexed Variable") + xlab("Date")
@@ -229,7 +229,6 @@ ggplot(total, aes(date)) +
 - Predictors
 
 - Time Series
-
 
 - State Maps
 
