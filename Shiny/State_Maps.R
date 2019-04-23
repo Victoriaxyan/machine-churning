@@ -8,8 +8,9 @@ library(shinythemes)      # Bootswatch color themes for shiny
 library(choroplethr)      # Creating Choropleth Maps in R
 library(choroplethrMaps)  # Maps used by the choroplethr package
 library(dplyr)
+library(data.table)
 
-dat <- read.csv(url("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/ILINet.csv"), skip = 1)
+dat <- read.csv(url("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/ILINet.csv"))
 dat$month<-lubridate::month(as.Date(paste0(dat$YEAR, "-", dat$WEEK, "-", 10), 
                                     format = "%Y-%U-%u"))
 dat$date <- paste0(dat$YEAR, "-", dat$month, "-01")		
