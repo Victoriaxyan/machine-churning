@@ -6,7 +6,7 @@ date: "4/25/2019"
 output: ioslides_presentation
 ---
 
-```{r library, warning=FALSE, echo=FALSE, message=FALSE}
+```{r setup, warning=FALSE, echo=FALSE, message=FALSE}
 #require(devtools)
 #devtools::install_github("cosname/recharts")
 library(forecast)
@@ -17,6 +17,10 @@ library(ggplot2)
 library(dplyr)
 library(ggthemes)
 library(tidyr)
+library(readr)
+library(lubridate)
+library(zoo)
+
 ```
 
 ## Introduction to the Problem: Influenza Prediction
@@ -25,56 +29,39 @@ library(tidyr)
 
 Why we are interested:
 
-- In recent years, flu-related deaths have ranged from about 12,000 to — in the worst year — 56,000 (CDC).
+- There were ~80,000 flu-related deaths in 2017-18. This year's flu season has been 'record-breaking in duration' (CDC).
 
 - Knowing how to predict -> effective and timely precautionary measures.
 
 ## Introduction to the Problem: Influenza Prediction
 
-**Intensity** is decided by the following criteria:
+We want to estimate the following outcomes of flu **intensity**:
 
-- Number of visits to health care providers for flu
+- Mortality (number of flu-related deaths)
 
-- Number of positive tests on major flu types (H1, H3N2)
+- Flu Visits (number of visits to health care providers for flu)
 
-Goal: to make predictions on the above criteria for the following groups:
+- Flu Tests (number of positive tests on major flu types (H1, H3N2))
 
-1. Region (National level, State level)
+Using these predictors:
 
-2. Age Groups (Infants, Juniors, Seniors)
+- Region (National level, State level)
 
-
-## Data Overview: CDC Influenza Data
-
-CDC influenza data in the United States
-
-- National v.s. State
-
-- Patient **visit rates** to health care providers for influenza-like illness (ILI)
-
-- Specimens tested and **the number of positive tests for influenza**
+- Age Groups (Infants, Juniors, Seniors)
 
 - Vaccination Data
 
 ## Data demo: ILI visits, National
 
 ```{r echo=FALSE}
-visits <- fread("../Data/flu_view_line(Topright  Chart)_national.csv")
+visits <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
 visits.cleaned <- visits[,c(2,3,4,5,6,8,9,10)]
 visits.cleaned
-```
 
-## Data demo: Positive Tests, National
-
-```{r echo=FALSE}
-flutype <- fread("../Data/National_Positive_tests_type.csv")
+flutype <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/National_Positive_tests_type.csv")
 flutype[,c(3,4,5,6,7,9,12)]
-```
 
-## Data demo: Vaccination, National
-
-```{r echo=FALSE}
-vaccine <- fread("../Data/usa_vaccination_data.csv")
+vaccine <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/usa_vaccination_data.csv")
 vaccine
 ```
 
@@ -86,21 +73,21 @@ vaccine
 
 - Task: Selecting seasonal, differencing, autoregressive, and moving average parameters.  
 
-- Methodology: Looking at ACF and PACF lags, conduct cross validation and AICC criteria.
+- Methodology: Looking at ACF/PACF lags and AICC criteria.
 
 ## Implementation
 
-Example: visit rates for ILI.  
+Example: Using Flu visit data from 2010-17 to predict 2018-19
 
 ```{r datacleaning_visits,echo=FALSE}
 ili.percent <- visits[YEAR!=2019,.(percent = ILITOTAL/TOTAL.PATIENTS, week = V1)] 
 ts.ili.percent <- ts(ili.percent[,percent], frequency = 52)
-visits.Apr2019 <- fread("../Data/FluView_LineChart_2019.csv", skip = 1)
+visits.Apr2019 <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/FluView_LineChart_2019.csv", skip = 1)
 ili.2019 <- visits.Apr2019[YEAR==2019, .(percent = ILITOTAL/`TOTAL PATIENTS`)]
 ```
 
-Choosing paramenters
-
+- ARIMA model
+- Choosing parameters
 
 ##Implementation: Fitting model
 
@@ -173,7 +160,7 @@ ggplot() +
 
 ## Analysis: ILI visits by Age group
 
-```{r echo=FALSE,warning=FALSE}
+```{r echo=FALSE,warning=FALSE, message = FALSE}
 ili1$AGE.25.64<-0
 
 area_dat= ili1 %>%  
@@ -199,3 +186,52 @@ ggplot() +
   theme(plot.caption = element_text(hjust=0))+theme_classic()+
   scale_x_date(date_breaks = "1 month", date_labels ='%Y/%m')
 ```
+
+## Analysis: Flu vaccines vs. visits
+```{r echo=FALSE,warning=FALSE, message = FALSE}
+visits <- read_csv("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
+vaccines <- read_csv("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/usa_vaccination_data.csv")
+
+visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
+                                       format = "%Y-%U-%u"))
+visits$date <- paste(visits$YEAR,visits$month,sep="-")
+visits <- as.data.table(visits)
+
+monthly_data <- visits %>% 
+  group_by(YEAR, month) %>%                            # multiple group columns
+   summarise_at(c("ILITOTAL", "TOTAL.PATIENTS"), sum, na.rm = TRUE)
+monthly_data$year <- monthly_data$YEAR
+newdata <- vaccines[which(vaccines$age=='>6 months'),]
+newdata$month <- match(newdata$month,month.abb)
+total <- merge(monthly_data,newdata,by=c("year","month"))
+total$ili.percent <- total$ILITOTAL / total$TOTAL.PATIENTS
+total$YEAR <- NULL
+total$date <- paste0(total$year, "-", total$month)
+total$date <- as.Date(as.yearmon(total$date, "%Y-%m"))
+total <- dplyr::arrange(total, date)
+total <- transform(total, percent.index=100*total$ili.percent/total$ili.percent[1], vaccine.index=100*total$rate/total$rate[1])
+
+```
+
+```{r graph, echo = FALSE}
+ggplot(total, aes(date)) + 
+  geom_line(aes(y = percent.index, colour = "percent.index"), size=1.5) + 
+  geom_line(aes(y = vaccine.index, colour = "vaccine.index"), size=1.5) + ylab("Indexed Variable") + xlab("Date")
+```
+
+- Seasonality
+
+- Lagged effects
+
+- Flu vaccines consistent, flu diagnoses volatile
+
+## Shiny Apps
+- Predictors
+
+- Time Series
+
+
+- State Maps
+
+## Limitations and Uncertainties
+- TBD
