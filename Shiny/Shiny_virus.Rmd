@@ -1,0 +1,240 @@
+---
+title: "Flu Season Insight"
+subtitle: "5243 Final Project - Group E"
+author: 'Xueyan Zou, Namson Ngo-Le, Rachel Wu, Saloni Mohan'
+date: "2019/4/25"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(rmarkdown)
+library(knitr)
+library(Hmisc)
+library(DT)
+library(tidyr)
+library(ggplot2)
+library(ggthemes)
+library(data.table)
+assignInNamespace("cedta.override", c(data.table:::cedta.override,"rmarkdown"), "data.table")
+opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+
+```
+
+
+```{r working directories}
+# Note:  Please change the directory according to folder path
+setwd("/Users/pratykisallo/Documents/ Columbia prep/Sem 2/Applied Data Science/Final_Project/")
+```
+
+
+```{r readData, include=FALSE}
+#ILI visits, national data (Oct 2010- 2019)
+#visits <- read.csv("../Data/flu_view_line(Topright  Chart)_national.csv")
+visits <- fread(input = "flu_view_line(Topright  Chart)_national.csv")
+visits.Apr2019 <- fread("FluView_LineChart_2019.csv", skip = 1)
+#population by year, national data
+popu <- fread("population_by_sex_age_2010-2017.csv")
+#Flutype - by different regional cuts (WHO_NREVSS_Public_Health_Labs.csv)
+flu_national <- fread(input = "WHO_NREVSS_Public_Health_Labs.csv", skip =1)
+flu_HHS <- fread(input = "WHO_NREVSS_Public_Health_Labs_HHS.csv", skip =1)
+flu_Census <- fread(input = "WHO_NREVSS_Public_Health_Labs_Census.csv", skip = 1)
+# National Virus by Age
+National.Seasonal.AgebyVirus <- fread(input = "AgeViewBySeason.csv")
+National.Weekly.AgebyVirus <- fread(input = "AgeViewByWeek.csv")
+```
+
+
+```{r constants}
+Years <- c(2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019)
+Ages <- c("0-4 yr","5-24 yr","25-64 yr","65+ yr")
+Regional.Cut <- c("National", "HHS Regions", "State", "Census")
+Seasons <- c("2010-11", "2012-13", "2013-14", "2014-15","2015-16", "2016-17", "2017-18", "2018-19")
+Virus <- c("A (Unable to Subtype)","A (H1)","A (H3)","A (H1N1)pdm09","A (Subtyping not Performed)","B (Victoria Lineage)","B (Yamagata Lineage)","B (Lineage Unspecified)","H3N2v")
+
+```
+
+```{r functions}
+
+percentage.table <- function(x, digits = 1){
+  tab <- table(x)
+  percentage.tab <- 100*tab/(sum(tab))
+  rounded.tab <- round(x = percentage.tab, digits = digits)
+  return(rounded.tab)                           
+}
+
+
+Add.Season.Column <- function(dat){
+  i <- 2010
+  for(i in Years){
+  dat[(Year==i & Week >=40) | (Year==i+1 & Week <=39),season := paste0(i,"-",substring(as.character(i+1),3))]
+  i <- i+1
+  }
+  return(dat)
+}
+
+count.table <- function(start,end){
+tab <- visits[YEAR>=start & YEAR <= end,.(tot=sum(ILITOTAL)),keyby = YEAR]
+return(tab)
+}
+
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+mean.diff <- function(x, y){
+  return(mean(x, na.rm=TRUE) - mean(y, na.rm=TRUE))
+}
+
+
+```
+
+
+
+```{r Season_column}
+
+flu_national <- Add.Season.Column(flu_national)
+flu_Census <- Add.Season.Column(flu_Census)
+flu_HHS <- Add.Season.Column(flu_HHS)
+
+flu_State <- flu_State[,season:= ifelse(SEASON_DESCRIPTION=="Season 2015-16", "2015 - 2016",
+                                        ifelse(SEASON_DESCRIPTION=="Season 2016-17", "2016 - 2017",
+                                                ifelse(SEASON_DESCRIPTION=="Season 2017-18", "2017 - 2018", "2018 - 2019")))]
+```
+
+
+```{r AgebyVirus}
+
+National.Seasonal.AgebyVirus <- National.Seasonal.AgebyVirus[Season %in% Seasons,]
+National.Weekly.AgebyVirus <- National.Weekly.AgebyVirus[Year %in% Years,]
+
+```
+
+
+```{r Season}
+
+
+National.Weekly.AgebyVirus <- Add.Season.Column(National.Weekly.AgebyVirus)
+
+```
+
+```{r Reshape}
+
+National.Weekly.AgebyVirus.long <- melt(National.Weekly.AgebyVirus, 
+                                        id.vars = c("Year", "Week", "Age Group","season"),
+                                        measure.vars = Virus)
+
+National.Seasonal.AgebyVirus.long <- melt(National.Seasonal.AgebyVirus, 
+                                        id.vars = c("Season", "Age Group"),
+                                        measure.vars = Virus)
+```
+
+
+
+```{r ggplot}
+
+names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'variable'] <- 'Virus'
+names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'value'] <- 'Positive Specimens Reported'
+dat <- National.Weekly.AgebyVirus.long
+
+
+p <- ggplot(dat, aes(Week,`Positive Specimens Reported`, fill = Virus))+geom_bar(stat)
+```
+
+
+Introduction
+=====================================  
+
+We want to first look at the total flu cases over the past 10 years using a time series plot and identify unusual patterns. For example, the 2018 flu season was the worst since the 2009 swine flu pandemic, and roughly 7.7% of all U.S. citizens seeking medical care experienced flu-like symptoms.
+
+Then the question becomes--is there a way to figure out who was most at risk for contracting a specific type of virus? We plan to break down the outbreak across different states and try to explore the distributions of various flu cases among different age groups. We will try to build interactive plots such as maps, area plots, and bar graphs.
+
+
+ILI visits
+===================================
+
+
+Row {data-height=500}
+-------------------------------------
+
+```{r respondents}
+inputPanel(
+selectInput(inputId="Starting_Year", label = "Select Start Year:", choices = Years, selected =
+Years[1]),
+selectInput(inputId="Ending_Year", label = "Select End Year:", choices = Years, selected =
+Virus[9])
+)
+
+
+renderPlot({
+tab <- count.table(input$Starting_Year,input$Ending_Year)
+barplot(height = tab$tot, space=0.01, las = 1, main = sprintf("Number of ILI visits per year"), xlab ="Years", names.arg = tab$YEAR, cex.lab = 1.2, width = 0.05, 
+ylim = c(0, 1.2*max(tab, na.rm = TRUE)), col = "deepskyblue")
+
+})
+```
+
+Flu Virus
+===================================
+
+
+Inputs {.sidebar}
+-------------------------------------
+
+```{r AgebyView}
+inputPanel(
+selectInput(inputId="Seasons", label = "Select Seasons:", choices = Seasons, selected =
+Seasons[8]),
+checkboxGroupInput(inputId = "Age", label = "Age brackets:", choices=Ages, selected = Ages[1:4]),
+checkboxGroupInput(inputId = "Virus", label = "Virus:", choices=Virus, selected = Virus[1:9])
+)
+
+```
+
+
+Row
+-------------------------------------
+    
+### Chart 1
+    
+```{r}
+renderPlot({
+tab <- count.table(input$Starting_Year,input$Ending_Year)
+barplot(height = tab$tot, space=0.01, las = 1, main = sprintf("Number of ILI visits per year"), xlab ="Years", names.arg = tab$YEAR, cex.lab = 1.2, width = 0.05, 
+ylim = c(0, 1.2*max(tab, na.rm = TRUE)), col = "deepskyblue")
+
+})
+```
+
+
+ 
+### Chart 2
+    
+```{r}
+renderPlot({
+tab <- count.table(input$Starting_Year,input$Ending_Year)
+barplot(height = tab$tot, space=0.01, las = 1, main = sprintf("Number of ILI visits per year"), xlab ="Years", names.arg = tab$YEAR, cex.lab = 1.2, width = 0.05, 
+ylim = c(0, 1.2*max(tab, na.rm = TRUE)), col = "deepskyblue")
+
+})
+``` 
+
+
+
+Row
+-------------------------------------
+    
+### Chart 3
+    
+```{r}
+```
+    
+### Chart 4
+
+```{r}
+```
