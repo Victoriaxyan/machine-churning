@@ -26,7 +26,7 @@ library(shinythemes)
 
 ```{r read_data, include=FALSE}
 #flu_view_line(Topright  Chart)_national.csv
-visits <- read_csv("./Data/flu_view_line(Topright  Chart)_national.csv")
+visits <- read_csv("../Data/flu_view_line(Topright  Chart)_national.csv")
 visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
                                        format = "%Y-%U-%u"))
 visits$date <- paste(visits$YEAR,visits$month,sep="-")
@@ -127,39 +127,45 @@ renderPlot({
     ili1<-visits%>% 
          filter(duration==input$year)%>%
          mutate(Date = paste(YEAR, month,1,sep = "-"),
+                date2=as.Date(paste(YEAR,month,WEEK,sep="-"),"%Y-%m-%V"),
          Percentage=round(100*ILITOTAL/TOTAL.PATIENTS,2),
-         Dates=as.Date(Date,"%Y-%m-%d")) 
+         Dates=as.Date(Date,"%Y-%m-%d"),
+         rowN=row_number())
     
   area_dat= ili1 %>%  
     filter(duration==input$year) %>%
     select(Percentage,Dates,WEEK,YEAR,i=ILITOTAL,young =`AGE.0.4`, 
          young2 = `AGE.5.24`,mid =`AGE.25.49`,old = `AGE.50.64`,old2 = `AGE.65` ) %>% 
     mutate(i=as.numeric(i),young  =as.numeric(young)+as.numeric(young2),
-         mid=as.numeric(mid),old =as.numeric(old)+as.numeric(old2) )%>%
+         mid=as.numeric(mid),old =as.numeric(old)+as.numeric(old2),
+         row=row_number())%>%
   #mutate(Dates = seq.Date(as.Date("2018/01/01"),as.Date("2019/03/01"),by="weeks")) %>%
   gather(key=ageGroup,value = ageGroupTotal,c(young,mid,old),factor_key=T)
 
   area_dat2<-area_dat %>%
-    group_by(WEEK,ageGroup)%>%
+    group_by(ageGroup,Dates)%>%
     summarise(ageTotal=sum(ageGroupTotal))
     
     if(input$age==F){
       p1<-ggplot() +
-        geom_line(data=ili1, aes(x =WEEK, y = Percentage),size=1,col="darkblue")+
+        geom_line(data=ili1, aes(rowN,  Percentage),size=1,col="darkblue")+
         stat_smooth(color = "#FC4E07", fill = "#FC4E07",method = "loess")+
         ggtitle("Percentage of Weekly Total Reported Influenza Like Illnesses in the US")+
         labs(caption='Influenza-Like Illness is defined as fever and a cough and/or a sore throat in the absence of a known cause other than flu\nData Source: CDC Weekly US Influenza Surveillance Report')+
         theme_economist_white(base_size = 16)+
-        xlab("Week") + ylab("Percentage (%) of ILI patients")+
+        xlab(NULL) + ylab("Percentage (%) of ILI patients")+
         theme(plot.title = element_text(hjust=0.5))+
         theme (plot.caption=element_text(hjust=0))
+        #scale_x_continuous(
+    #labels = paste("Week",c("40","50","8","18","28","38")," "))
     }
   else{
     p1<-ggplot() +
-      geom_area(data = area_dat2, aes(x = WEEK, y = ageTotal, fill = ageGroup)) +
+      geom_area(data = area_dat2, aes(x = Dates, y = ageTotal, fill = ageGroup)) +
       scale_fill_brewer(name="Age Groups",labels = c("0-24 years","25-49 years",
                              "50+ years"),palette="YlGn",direction = -1) +
-      labs(x="Week",y="Flu Cases by Age Group")+
+      labs(x="Date",y="Flu Cases by Age Group")+
+      scale_x_date(date_breaks = "1 month")+
       theme(plot.caption = element_text(hjust=0))+
       theme_economist_white(base_size = 14)
   }
