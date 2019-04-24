@@ -26,7 +26,7 @@ library(shinythemes)
 
 ```{r read_data, include=FALSE}
 #flu_view_line(Topright  Chart)_national.csv
-visits <- read_csv("../Data/flu_view_line(Topright  Chart)_national.csv")
+visits <- read_csv("../Data/flu_view_line(Topright  Chart)_national.csv") 
 visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
                                        format = "%Y-%U-%u"))
 visits$date <- paste(visits$YEAR,visits$month,sep="-")
