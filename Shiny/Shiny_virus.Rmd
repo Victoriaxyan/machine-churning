@@ -11,10 +11,12 @@ runtime: shiny
 ```{r setup, include=FALSE}
 library(flexdashboard)
 library(shiny)
+library(plotly)
 library(rmarkdown)
 library(knitr)
 library(Hmisc)
 library(DT)
+library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(ggthemes)
@@ -25,26 +27,10 @@ opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.
 ```
 
 
-```{r working directories}
-# Note:  Please change the directory according to folder path
-setwd("/Users/pratykisallo/Documents/ Columbia prep/Sem 2/Applied Data Science/Final_Project/")
-```
-
-
 ```{r readData, include=FALSE}
-#ILI visits, national data (Oct 2010- 2019)
-#visits <- read.csv("../Data/flu_view_line(Topright  Chart)_national.csv")
-visits <- fread(input = "flu_view_line(Topright  Chart)_national.csv")
-visits.Apr2019 <- fread("FluView_LineChart_2019.csv", skip = 1)
-#population by year, national data
-popu <- fread("population_by_sex_age_2010-2017.csv")
-#Flutype - by different regional cuts (WHO_NREVSS_Public_Health_Labs.csv)
-flu_national <- fread(input = "WHO_NREVSS_Public_Health_Labs.csv", skip =1)
-flu_HHS <- fread(input = "WHO_NREVSS_Public_Health_Labs_HHS.csv", skip =1)
-flu_Census <- fread(input = "WHO_NREVSS_Public_Health_Labs_Census.csv", skip = 1)
 # National Virus by Age
-National.Seasonal.AgebyVirus <- fread(input = "AgeViewBySeason.csv")
-National.Weekly.AgebyVirus <- fread(input = "AgeViewByWeek.csv")
+National.Seasonal.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewBySeason.csv")
+National.Weekly.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewByWeek.csv")
 ```
 
 
@@ -95,19 +81,6 @@ mean.diff <- function(x, y){
 ```
 
 
-
-```{r Season_column}
-
-flu_national <- Add.Season.Column(flu_national)
-flu_Census <- Add.Season.Column(flu_Census)
-flu_HHS <- Add.Season.Column(flu_HHS)
-
-flu_State <- flu_State[,season:= ifelse(SEASON_DESCRIPTION=="Season 2015-16", "2015 - 2016",
-                                        ifelse(SEASON_DESCRIPTION=="Season 2016-17", "2016 - 2017",
-                                                ifelse(SEASON_DESCRIPTION=="Season 2017-18", "2017 - 2018", "2018 - 2019")))]
-```
-
-
 ```{r AgebyVirus}
 
 National.Seasonal.AgebyVirus <- National.Seasonal.AgebyVirus[Season %in% Seasons,]
@@ -132,19 +105,15 @@ National.Weekly.AgebyVirus.long <- melt(National.Weekly.AgebyVirus,
 National.Seasonal.AgebyVirus.long <- melt(National.Seasonal.AgebyVirus, 
                                         id.vars = c("Season", "Age Group"),
                                         measure.vars = Virus)
-```
-
-
-
-```{r ggplot}
 
 names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'variable'] <- 'Virus'
 names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'value'] <- 'Positive Specimens Reported'
-dat <- National.Weekly.AgebyVirus.long
 
 
-p <- ggplot(dat, aes(Week,`Positive Specimens Reported`, fill = Virus))+geom_bar(stat)
+names(National.Seasonal.AgebyVirus.long)[names(National.Seasonal.AgebyVirus.long) == 'variable'] <- 'Virus'
+names(National.Seasonal.AgebyVirus.long)[names(National.Seasonal.AgebyVirus.long) == 'value'] <- 'Positive Specimens Reported'
 ```
+
 
 
 Introduction
@@ -154,34 +123,8 @@ We want to first look at the total flu cases over the past 10 years using a time
 
 Then the question becomes--is there a way to figure out who was most at risk for contracting a specific type of virus? We plan to break down the outbreak across different states and try to explore the distributions of various flu cases among different age groups. We will try to build interactive plots such as maps, area plots, and bar graphs.
 
-
-ILI visits
+Virus EDA
 ===================================
-
-
-Row {data-height=500}
--------------------------------------
-
-```{r respondents}
-inputPanel(
-selectInput(inputId="Starting_Year", label = "Select Start Year:", choices = Years, selected =
-Years[1]),
-selectInput(inputId="Ending_Year", label = "Select End Year:", choices = Years, selected =
-Virus[9])
-)
-
-
-renderPlot({
-tab <- count.table(input$Starting_Year,input$Ending_Year)
-barplot(height = tab$tot, space=0.01, las = 1, main = sprintf("Number of ILI visits per year"), xlab ="Years", names.arg = tab$YEAR, cex.lab = 1.2, width = 0.05, 
-ylim = c(0, 1.2*max(tab, na.rm = TRUE)), col = "deepskyblue")
-
-})
-```
-
-Flu Virus
-===================================
-
 
 Inputs {.sidebar}
 -------------------------------------
@@ -194,47 +137,59 @@ checkboxGroupInput(inputId = "Age", label = "Age brackets:", choices=Ages, selec
 checkboxGroupInput(inputId = "Virus", label = "Virus:", choices=Virus, selected = Virus[1:9])
 )
 
+
 ```
 
 
-Row
+Column {.tabset}
 -------------------------------------
     
-### Chart 1
+### National Virus Distribution - Weekly
     
 ```{r}
-renderPlot({
-tab <- count.table(input$Starting_Year,input$Ending_Year)
-barplot(height = tab$tot, space=0.01, las = 1, main = sprintf("Number of ILI visits per year"), xlab ="Years", names.arg = tab$YEAR, cex.lab = 1.2, width = 0.05, 
-ylim = c(0, 1.2*max(tab, na.rm = TRUE)), col = "deepskyblue")
 
+renderPlot({
+dat <- National.Weekly.AgebyVirus.long[season %in% input$Seasons & `Age Group` %in% input$Age & Virus %in% input$Virus,]
+dat <- dat %>% mutate(row = row_number())
+ggplot(dat, aes(reorder(Week,row),`Positive Specimens Reported`, fill = Virus))+geom_bar(stat="identity") + labs(x = "Week") +
+theme(axis.text.x = element_text(angle = 90))
 })
 ```
 
 
- 
-### Chart 2
+### National Virus Distribution - Seasonal
     
 ```{r}
 renderPlot({
-tab <- count.table(input$Starting_Year,input$Ending_Year)
-barplot(height = tab$tot, space=0.01, las = 1, main = sprintf("Number of ILI visits per year"), xlab ="Years", names.arg = tab$YEAR, cex.lab = 1.2, width = 0.05, 
-ylim = c(0, 1.2*max(tab, na.rm = TRUE)), col = "deepskyblue")
+dat <- National.Seasonal.AgebyVirus.long[Season %in% input$Seasons & `Age Group` %in% input$Age & Virus %in% input$Virus,]
+dat <- dat[,.(Total=sum(`Positive Specimens Reported`)), by=c("Season","Virus","Age Group")][order(Season)]
+ggplot(dat,aes(x="",y=Total,fill=Virus))+geom_bar(stat="identity") + coord_polar("y", start=0)
 
 })
 ``` 
 
-
-
-Row
--------------------------------------
-    
-### Chart 3
+### Virus Distribution by Age - Weekly
     
 ```{r}
-```
-    
-### Chart 4
 
-```{r}
+renderPlot({
+dat <- National.Weekly.AgebyVirus.long[season %in% input$Seasons & `Age Group` %in% input$Age & Virus %in% input$Virus,]
+dat <- dat %>% mutate(row = row_number())
+ggplot(dat, aes(reorder(Week,row),`Positive Specimens Reported`, fill = Virus))+geom_bar(stat="identity") + labs(x = "Week") +
+theme(axis.text.x = element_text(angle = 90)) +
+facet_grid(~`Age Group`)
+})
 ```
+
+
+### Virus Distribution by Age - Seasonal
+    
+```{r}
+renderPlot({
+dat <- National.Seasonal.AgebyVirus.long[Season %in% input$Seasons & `Age Group` %in% input$Age & Virus %in% input$Virus,]
+dat <- dat[,.(Total=sum(`Positive Specimens Reported`)), by=c("Season","Virus","Age Group")][order(Season)]
+ggplot(dat,aes(x="",y=Total,fill=Virus))+geom_bar(stat="identity") + coord_polar("y", start=0) +
+facet_grid(~`Age Group`)
+
+})
+``` 
