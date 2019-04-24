@@ -26,17 +26,27 @@ opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.
 ```
 
 ```{r}
-visits.national <- fread("../Data/flu_view_line(Topright  Chart)_national.csv")
-visits.state <- fread("../Data/State_Data/ILINet.csv")
-flutype.national <- fread("../Data/National_Positive_tests_type.csv")
-flutype.state <- fread("../Data/State_Data/WHO_NREVSS_Public_Health_Labs.csv",skip=1)
+visits.national <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
+
+visits.state <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/ILINet.csv")
+
+flutype.national <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/National_Positive_tests_type.csv")
+
+flutype.state <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/WHO_NREVSS_Public_Health_Labs.csv",skip=1)
+
+vaccine.national <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/usa_vaccination_data.csv")
 ```
 
 ```{r}
 region.names <- c("national", unique(visits.state[,REGION]))
+age.groups <- names(visits.national)[c(4:6,8:9)]
 pred.length <- 4:52 #number of weeks want to plan ahead
 datatype <- c("Visit Rates for ILI", 
-              names(flutype.national)[c(7,9,10,12,13)])
+              names(flutype.national)[c(7,9,10,12,13)],
+              age.groups)
+
+
+#date format change
 visits.national[,MONTH:=lubridate::month(as.Date(paste0(YEAR, "-", 
                                                         WEEK, "-", 10), 
                                                  format = "%Y-%U-%u"))]
@@ -63,47 +73,60 @@ inputPanel(
 
   #select weeks to predict ahead
   numericInput(inputId = "Pred.Length", 
-               label = "Number of weeks to predict:", min = 4, max = 52, 
-               value = 39, step = 13),
+               label = "Number of weeks to predict:", min = 4, max = 104, 
+               value = 52, step = 13),
   #select length of original data
   numericInput(inputId = "Orig.Length",
-               label = "Number of previous weeks:", min = 89, max = 445,
-               value = 178, step = 89),
+               label = "Number of previous weeks`:", min = 1, max = 445,
+               value = 100, step = 5),
   
-  helpText("Loading model, will take 10 seconds...")
+  helpText("Loading model, will take more than 10 seconds, sorry for waiting...")
 )
 
 renderPrint({
+  #national level
   if(input$Region=="national"){
-    if(input$data.type == datatype[1]){
-      series <- visits.national[,X..WEIGHTED.ILI] #visits
+    if(input$data.type %in% c(datatype[1], age.groups)){
+      if(input$data.type == datatype[1]){
+        series <- visits.national[,X..WEIGHTED.ILI] #ILI total rates
+      }
+      else{
+        series <- visits.national[,get(input$data.type)] #ILI by age group
+      }
     }
     else{
-      series <- flutype.national[,get(input$data.type)] #flu type
+        series <- flutype.national[,get(input$data.type)] #flu type
     }
   }
   else{
     #state level
     if(input$data.type == datatype[1]){
       series <- visits.state[REGION==input$Region, 
-                             as.numeric(ILITOTAL)/as.numeric(`TOTAL PATIENTS`)] #visits
+                             na.omit(as.numeric(ILITOTAL)/as.numeric(`TOTAL PATIENTS`))]
+      #visits
     }
     else{
-      series = flutype.state[REGION==input$Region,get(input$data.type)] #flu type
+      if(input$data.type %in% age.groups){
+        series = NULL #no data for state level ILI visits by age groups
+      }
+      else{
+        series = flutype.state[REGION==input$Region,get(input$data.type)] #flu type
+      }
     }
   }
   
   if(length(series)<10){
-    datatable(explanation = "No Content to display")
+    print("Sorry, the data size is too small to construct models. Please change the Region to National level.")
   }
   else{
     #fitting arima model
-    m.auto <- auto.arima(series, trace=T) 
+    m.auto <- auto.arima(series, max.p = 3) 
     arma <- m.auto$arma #subtracts the orders of SARIMA model
     
     result <- list(`model order` = c(p=arma[1], d=arma[6], q=arma[2],
                                      P=arma[3], D=arma[7], Q=arma[4]),
-                   coefficients = data.table(coefficients = m.auto$coef,
+                   coefficients = data.table(term = names(m.auto$coef),
+                                             coefficients = m.auto$coef,
                                              variance = diag(m.auto$var.coef)),
                    criteria = c(AICC = m.auto$aicc, AIC = m.auto$aic,
                                 BIC = m.auto$bic)
@@ -115,13 +138,16 @@ renderPrint({
 renderPlot({
   #national level
   {if(input$Region=="national"){
-    if(input$data.type == datatype[1]){
-      series <- visits.national[,X..WEIGHTED.ILI] #visits
-      #indx <- visits.national[,date]
+    if(input$data.type %in% c(datatype[1], age.groups)){
+      if(input$data.type == datatype[1]){
+        series <- visits.national[,X..WEIGHTED.ILI] #ILI total rates
+      }
+      else{
+        series <- visits.national[,get(input$data.type)] #ILI by age group
+      }
     }
     else{
       series <- flutype.national[,get(input$data.type)] #flu type
-      #indx <- flutype.national[,date]
     }
   }
   else{
@@ -130,10 +156,14 @@ renderPlot({
       series <- visits.state[REGION==input$Region, 
                              na.omit(as.numeric(ILITOTAL)/as.numeric(`TOTAL PATIENTS`))] 
       #visits
-      #indx <- visits.state[REGION==input$Region, date]
     }
     else{
-      series = flutype.state[REGION==input$Region,get(input$data.type)] #flu type
+      if(input$data.type %in% age.groups){
+        series = rep(0,2) #no data for state level ILI visits by age groups
+      }
+      else{
+        series = flutype.state[REGION==input$Region,get(input$data.type)] #flu type
+      }
     }
   }}
   {  
@@ -141,14 +171,14 @@ renderPlot({
     ggplot(data = data.table(week=1:length(series), number=as.numeric(series)),
            aes(x = week, y = number))+
       geom_line(size=2)+
-      labs(title = "Data size too small to contruct a model. Please change the region to nation level.")+
+      labs(title = "Data size too small to contruct a model. Please change the region to nation level, or change the data type to 'Visit Rates for ILI'")+
       theme(plot.title = element_text(hjust = 0.5))
   }
   else{
     series <- ts(series, frequency = 52)
     
     #fitting arima model
-    m.auto <- auto.arima(series, trace=T) 
+    m.auto <- auto.arima(series, max.p=3, trace=T) 
     
     #forecast
     pred.list <- forecast(m.auto, h = input$Pred.Length) #point forecasts and CIs
@@ -166,6 +196,11 @@ renderPlot({
       geom_smooth(data = pred, aes(x=week, y=data, ymax=pred.list$upper[,2],
                                    ymin=pred.list$lower[,2]),
                   col = "LightCoral", size = 2, stat="identity")+
+      geom_vline(xintercept = input$Orig.Length,linetype=4,col="brown")+
+      geom_text(data = data.frame(week = input$Orig.Length, 
+                                  event = "March 2019(12th week)"),
+                aes(x = week, y=0, label = event),
+                size = 5, col = "Black", angle = 0, vjust=1.3, hjust=.5)+
       labs(title = "Original data with Predictions")+
       theme(plot.title = element_text(hjust = 0.5))
   }}
