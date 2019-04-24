@@ -120,7 +120,7 @@
 <ul>
 <li><p>Mortality (number of flu-related deaths)</p></li>
 <li><p>Flu Visits (number of visits to health care providers for flu)</p></li>
-<li><p>Flu Tests (number of positive tests on major flu types (H1, H3N2))</p></li>
+<li><p>Flu Tests (number of positive tests on major flu types)</p></li>
 </ul>
 
 <p>Using these predictors:</p>
@@ -131,46 +131,19 @@
 <li><p>Vaccination Data</p></li>
 </ul>
 
-</article></slide><slide class=""><hgroup><h2>Data demo: ILI visits, National</h2></hgroup><article  id="data-demo-ili-visits-national">
+</article></slide><slide class=""><hgroup><h2>Description of Data</h2></hgroup><article  id="description-of-data">
 
-<pre >##      YEAR WEEK AGE.0.4 AGE.5.24 AGE.25.49 AGE.50.64 AGE.65 ILITOTAL
-##   1: 2010   40    2627     3142      1677       627    400     8473
-##   2: 2010   41    2953     3522      1779       649    444     9347
-##   3: 2010   42    3044     3641      1898       690    411     9684
-##   4: 2010   43    3226     3822      1754       682    420     9904
-##   5: 2010   44    3451     4397      1981       736    455    11020
-##  ---                                                               
-## 438: 2019    8   13462    26535     15759      6154   4475    66385
-## 439: 2019    9   11446    23380     13871      5735   4138    58570
-## 440: 2019   10   10934    21531     13021      5355   4028    54869
-## 441: 2019   11   10608    19526     12420      5307   4109    51970
-## 442: 2019   12    9023    15346     10254      4305   3632    42560</pre>
+<pre >##    YEAR WEEK AGE.0.4 AGE.5.24 AGE.25.49 AGE.50.64 AGE.65 ILITOTAL
+## 1: 2010   40    2627     3142      1677       627    400     8473
+## 2: 2010   41    2953     3522      1779       649    444     9347
+## 3: 2010   42    3044     3641      1898       690    411     9684
+## 4: 2010   43    3226     3822      1754       682    420     9904
+## 5: 2010   44    3451     4397      1981       736    455    11020
+## 6: 2010   45    3927     4679      1956       734    511    11807</pre>
 
-<pre >##      YEAR WEEK TOTAL SPECIMENS PERCENT POSITIVE A (2009 H1N1) A (H3)  B
-##   1: 2010    1            9456          4.00804           272      1 11
-##   2: 2010    2            8753          4.76408           272      3 11
-##   3: 2010    3            8468          5.63297           324      1  1
-##   4: 2010    4            8378          5.10862           282      3  9
-##   5: 2010    5            8243          5.15589           307      0 10
-##  ---                                                                   
-## 477: 2019    8            4346       1320.00000          1359     58  0
-## 478: 2019    9            4427       1200.00000          1574     39  0
-## 479: 2019   10            3972       1051.00000          1489     20  0
-## 480: 2019   11            3312        716.00000          1273     17  0
-## 481: 2019   12            1618        268.00000           573     20  0</pre>
-
-<pre >##      year month        age rate      n
-##   1: 2010   Aug  &gt;6 months  1.3 494368
-##   2: 2010   Sep  &gt;6 months  7.6 494368
-##   3: 2010   Oct  &gt;6 months 24.8 494368
-##   4: 2010   Nov  &gt;6 months 34.7 494368
-##   5: 2010   Dec  &gt;6 months 37.8 494368
-##  ---                                  
-## 316: 2018   Jan &gt; 65 years 55.6 111988
-## 317: 2018   Feb &gt; 65 years 57.2 111988
-## 318: 2018   Mar &gt; 65 years 58.3 111988
-## 319: 2018   Apr &gt; 65 years 59.1 111988
-## 320: 2018   May &gt; 65 years 59.6 111988</pre>
+<ul>
+<li>Flu data often undereported due to identification/reporting delays</li>
+</ul>
 
 </article></slide><slide class=""><hgroup><h2>Analysis: Statistical Methods</h2></hgroup><article  id="analysis-statistical-methods">
 
@@ -186,7 +159,7 @@
 <p>Example: Using Flu visit data from 2010-17 to predict 2018-19</p>
 
 <ul>
-<li>ARIMA model</li>
+<li>SARIMA model</li>
 <li>Choosing parameters</li>
 </ul>
 
@@ -237,15 +210,17 @@ m</pre>
 </article></slide><slide class=""><hgroup><h2>Shiny Apps</h2></hgroup><article  id="shiny-apps">
 
 <ul>
-<li><p>Predictors</p></li>
-<li><p>Time Series</p></li>
-<li><p>State Maps</p></li>
+<li><p>Predictors <a href='https://nnl101.shinyapps.io/Models/' title=''>https://nnl101.shinyapps.io/Models/</a></p></li>
+<li><p>Time Series <a href='https://nnl101.shinyapps.io/TimeSeries/' title=''>https://nnl101.shinyapps.io/TimeSeries/</a></p></li>
+<li><p>State Maps <a href='https://nnl101.shinyapps.io/State_Maps/' title=''>https://nnl101.shinyapps.io/State_Maps/</a></p></li>
 </ul>
 
 </article></slide><slide class=""><hgroup><h2>Limitations and Uncertainties</h2></hgroup><article  id="limitations-and-uncertainties">
 
 <ul>
-<li>TBD</li>
+<li></li>
+<li><p>Difficult to make time series predictions, especially on flu incidence</p></li>
+<li><p>Data: not random, underreporting, patterns may change over time</p></li>
 </ul></article></slide>
 
 

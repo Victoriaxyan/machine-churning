@@ -41,7 +41,7 @@ We want to estimate the following outcomes of flu **intensity**:
 
 - Flu Visits (number of visits to health care providers for flu)
 
-- Flu Tests (number of positive tests on major flu types (H1, H3N2))
+- Flu Tests (number of positive tests on major flu types)
 
 Using these predictors:
 
@@ -51,19 +51,19 @@ Using these predictors:
 
 - Vaccination Data
 
-## Data demo: ILI visits, National
+## Description of Data
 
 ```{r echo=FALSE}
 visits <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
 visits.cleaned <- visits[,c(2,3,4,5,6,8,9,10)]
-visits.cleaned
+head(visits.cleaned)
 
 flutype <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/National_Positive_tests_type.csv")
-flutype[,c(3,4,5,6,7,9,12)]
 
 vaccine <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/usa_vaccination_data.csv")
-vaccine
 ```
+
+- Flu data often undereported due to identification/reporting delays
 
 ## Analysis: Statistical Methods
 
@@ -86,7 +86,7 @@ visits.Apr2019 <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-
 ili.2019 <- visits.Apr2019[YEAR==2019, .(percent = ILITOTAL/`TOTAL PATIENTS`)]
 ```
 
-- ARIMA model
+- SARIMA model
 - Choosing parameters
 
 ##Implementation: Fitting model
@@ -227,10 +227,18 @@ ggplot(total, aes(date)) +
 
 ## Shiny Apps
 - Predictors
+https://nnl101.shinyapps.io/Models/
 
 - Time Series
+https://nnl101.shinyapps.io/TimeSeries/
 
 - State Maps
+https://nnl101.shinyapps.io/State_Maps/
 
 ## Limitations and Uncertainties
-- TBD
+
+- 
+
+- Difficult to make time series predictions, especially on flu incidence
+
+- Data: not random, underreporting, patterns may change over time
