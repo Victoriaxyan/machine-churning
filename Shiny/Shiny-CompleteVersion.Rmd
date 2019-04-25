@@ -1,5 +1,5 @@
 ---
-title: ""
+title: "Study on Flu Seasons"
 runtime: shiny
 output: 
   flexdashboard::flex_dashboard:
