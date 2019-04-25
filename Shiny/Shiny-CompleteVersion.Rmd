@@ -1,6 +1,10 @@
 ---
-output: flexdashboard::flex_dashboard
+title: ""
 runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    theme: yeti
+    css: styles.css
 ---
 
 ```{r setup, include=FALSE}
