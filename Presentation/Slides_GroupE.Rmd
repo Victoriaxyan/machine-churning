@@ -66,7 +66,7 @@ vaccines <- read_csv("https://raw.githubusercontent.com/Victoriaxyan/machine-chu
 
 - Flu data often undereported due to identification/reporting delays
 
-## Results: ILI Visits Overview
+## ILI Visits Overview
 
 ```{r echo=FALSE, warning=FALSE}
 visits[,month:=lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
@@ -97,7 +97,7 @@ ggplot() +
 
 What happened in 2018?
 
-## Results: ILI visits by Age group, 2018
+## ILI visits by Age group, 2018
 
 ```{r echo=FALSE,warning=FALSE, message = FALSE}
 ili1$AGE.25.64<-0
@@ -126,7 +126,7 @@ ggplot() +
   scale_x_date(date_breaks = "1 month", date_labels ='%Y/%m')
 ```
 
-## Results: Flu vaccines vs. visits
+## Flu vaccines vs. visits
 ```{r echo=FALSE,warning=FALSE, message = FALSE}
 
 visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
