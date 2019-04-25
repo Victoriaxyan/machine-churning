@@ -20,6 +20,7 @@ library(tidyr)
 library(readr)
 library(lubridate)
 library(zoo)
+library(knitr)
 
 ```
 
@@ -53,7 +54,7 @@ Using these predictors:
 
 ## Description of Data
 
-```{r echo=FALSE}
+```{r echo=FALSE,message=FALSE}
 visits <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
 visits.cleaned <- visits[,c(2,3,4,5,6,8,9,10)]
 head(visits.cleaned)
@@ -64,57 +65,6 @@ vaccines <- read_csv("https://raw.githubusercontent.com/Victoriaxyan/machine-chu
 ```
 
 - Flu data often undereported due to identification/reporting delays
-
-## Analysis: Statistical Methods
-
-- Model: time series model *SARIMA*
-
-- Reason: The datasets we have are basically time series data. The most widely used model in time series predicting is *SARIMA* models.
-
-- Task: Selecting seasonal, differencing, autoregressive, and moving average parameters.  
-
-- Methodology: Looking at ACF/PACF lags and AICC criteria.
-
-## Implementation: Fitting model
-
-Example: Using Flu visit rate data from 2010-Mar 2019 to predict the following 52 weeks
-
-```{r datacleaning_visits,echo=FALSE}
-series <- visits[,X..WEIGHTED.ILI]
-series <- ts(series, frequency = 52)
-```
-
-```{r}
-m.auto <- auto.arima(series, max.p=3) 
-m.auto
-```
-
-## Implementation: Forecasting
-
-```{r}
-pred.list <- forecast(m.auto, h = 52) #point forecasts and CIs
-predictions <- pred.list$mean
-```
-
-```{r PlottingForecast,echo=FALSE}
-orig <- data.table(week = 1:104, data = series[-1:(-(length(series)-104))])
-pred <- data.table(week = (104+1):(104+length(predictions)),
-                   data = c(predictions))
-    
-ggplot(data = orig, aes(x=week, y=data))+
-      geom_line(size = 1, col = "dodgerblue")+
-      geom_smooth(data = pred, aes(x=week, y=data, ymax=pred.list$upper[,2],
-                                   ymin=pred.list$lower[,2]),
-                  col = "LightCoral", stat="identity")+
-      geom_vline(xintercept = 104, linetype=4,
-                 col="#009999", size = 1)+
-      geom_text(data = data.frame(week = 104, 
-                                  event = "March 2019 (12th week)"),
-                aes(x = week, y = 0, label = event),
-                size = 5, col = "#009999", angle = 0, vjust=-18, hjust=.5)+
-      labs(title = "Forecasts (red) for National ILI visitis in the following 52 weeks")+
-      theme(plot.title = element_text(hjust = 0.5))
-```
 
 ## Results: ILI Visits Overview
 
@@ -212,15 +162,62 @@ ggplot(total, aes(date)) +
 
 - Flu vaccines consistent, flu diagnoses volatile
 
+## Analysis: Statistical Methods
+
+- Model: time series model *SARIMA*
+
+- Reason: The datasets we have are basically time series data. The most widely used model in time series predicting is *SARIMA* models.
+
+- Task: Selecting seasonal, differencing, autoregressive, and moving average parameters.  
+
+- Methodology: Looking at ACF/PACF lags and AICC criteria.
+
+## Implementation: Fitting model
+
+Example: Using Flu visit rate data from 2010-Mar 2019 to predict the following 52 weeks
+
+```{r datacleaning_visits,echo=FALSE}
+series <- visits[,X..WEIGHTED.ILI]
+series <- ts(series, frequency = 52)
+```
+
+```{r}
+m.auto <- auto.arima(series, max.p=3) 
+m.auto
+```
+
+## Implementation: Forecasting
+
+```{r}
+pred.list <- forecast(m.auto, h = 52) #point forecasts and CIs
+predictions <- pred.list$mean
+```
+
+```{r PlottingForecast,echo=FALSE}
+orig <- data.table(week = 1:104, data = series[-1:(-(length(series)-104))])
+pred <- data.table(week = (104+1):(104+length(predictions)),
+                   data = c(predictions))
+    
+ggplot(data = orig, aes(x=week, y=data))+
+      geom_line(size = 1, col = "dodgerblue")+
+      geom_smooth(data = pred, aes(x=week, y=data, ymax=pred.list$upper[,2],
+                                   ymin=pred.list$lower[,2]),
+                  col = "LightCoral", stat="identity")+
+      geom_vline(xintercept = 104, linetype=4,
+                 col="#009999", size = 1)+
+      geom_text(data = data.frame(week = 104, 
+                                  event = "March 2019 (12th week)"),
+                aes(x = week, y = 0, label = event),
+                size = 5, col = "#009999", angle = 0, vjust=-18, hjust=.5)+
+      labs(title = "Forecasts (red) for National ILI visitis in the following 52 weeks")+
+      theme(plot.title = element_text(hjust = 0.5))
+```
+
 ## Shiny Apps
-- Predictors
-https://nnl101.shinyapps.io/Models/
 
-- Time Series
-https://nnl101.shinyapps.io/TimeSeries/
-
-- State Maps
-https://nnl101.shinyapps.io/State_Maps/
+```{r echo=FALSE,out.width="90%"}
+include_graphics("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Presentation/shinyScreenShot.png")
+```
 
 ## Limitations and Uncertainties
 
