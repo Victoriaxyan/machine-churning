@@ -21,10 +21,6 @@ library(forecast)
 library(rsconnect)
 library(plotly)
 library(Hmisc)
-library(highcharter)
-library(viridisLite)
-library(treemap)
-library(arules)
 library(shinythemes)      # Bootswatch color themes for shiny
 library(choroplethr)      # Creating Choropleth Maps in R
 library(choroplethrMaps)  # Maps used by the choroplethr package
@@ -32,18 +28,6 @@ library(choroplethrMaps)  # Maps used by the choroplethr package
 assignInNamespace("cedta.override", c(data.table:::cedta.override,"rmarkdown"), "data.table")
 
 opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
-
-thm <- 
-  hc_theme(
-    colors = c("#1a6ecc", "#434348", "#90ed7d"),
-    chart = list(
-      backgroundColor = "transparent",
-      style = list(fontFamily = "Source Sans Pro")
-    ),
-    xAxis = list(
-      gridLineWidth = 1
-    )
-  )
 
 ```
 
@@ -66,7 +50,7 @@ National.Seasonal.AgebyVirus <- fread(input = "https://raw.githubusercontent.com
 
 National.Weekly.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewByWeek.csv")
 
-ILINet_state <- read_csv("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/ILINet.csv")
+dat <- read.csv(url("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/ILINet.csv"))
 ```
 
 ```{r constants}
@@ -87,7 +71,7 @@ Virus <- c("A (Unable to Subtype)","A (H1)","A (H3)","A (H1N1)pdm09","A (Subtypi
 ```
 
 ```{r cleaning}
-#date format change
+#date format change for ILI visits national
 visits.national[,MONTH:=lubridate::month(as.Date(paste0(YEAR, "-", 
                                                         WEEK, "-", 10), 
                                                  format = "%Y-%U-%u"))]
@@ -101,9 +85,27 @@ visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-"
 visits$date <- paste(visits$YEAR,visits$month,sep="-")
 
 
-ILINet_state$ILITOTAL<-as.numeric(ILINet_state$ILITOTAL)
-ILINet_state$`TOTAL PATIENTS`<-as.numeric(ILINet_state$`TOTAL PATIENTS`)
-ILINet_state$totalp<-ILINet_state$`TOTAL PATIENTS`
+
+#ILI visits state
+
+dat$month<-lubridate::month(as.Date(paste0(dat$YEAR, "-", dat$WEEK, "-", 10), 
+                                    format = "%Y-%U-%u"))
+dat$date <- paste0(dat$YEAR, "-", dat$month, "-01")		
+dat$date <- as.Date(dat$date, "%Y-%m-%d")
+dat <- as.data.table(dat)
+dat$ILITOTAL <- as.numeric(dat$ILITOTAL)
+dat$'TOTAL.PATIENTS' <- as.numeric(dat$'TOTAL.PATIENTS')
+
+data <- dat %>% 
+  group_by(REGION, YEAR) %>%                           
+  summarise_at(c("ILITOTAL", "TOTAL.PATIENTS"), sum, na.rm = TRUE)
+
+data$ili.percent <- data$ILITOTAL / data$TOTAL.PATIENTS
+data$region <- data$REGION
+data$region <- sapply(data$region, tolower)
+data$REGION <- NULL
+data$YEAR <- as.integer(data$YEAR)
+data <- as.data.frame(data)
 
 #add the years
 visits$duration<-c(rep("2010-2011",52),
@@ -120,26 +122,6 @@ flutype.national[,date:=as.Date(date)]
 
 #add index to vaccine
 vaccine.national[,date:=as.Date(paste(year,match(month, month.abb),"1",sep = "-"))]
-
-ili3<-ILINet_state%>%
-  group_by(REGION,YEAR) %>%
-  summarise(sumili=sum(ILITOTAL),
-            sumTotal=sum(totalp)) 
-
-ili4<-ili3 %>%
-  group_by(REGION,YEAR) %>%
-  summarise(percent=round(100*sumili/sumTotal,2))
-
-
-aggts<-ts(ili4$percent,start=2010,freq=1)
-
-usgeo<-data("usgeojson")
-
-n <- 4
-colstops <- data.frame(
-  q = 0:n/n,
-  c = substring(viridis(n + 1), 0, 7)) %>%
-  list_parse2()
 ``` 
 
 ```{r functions}
@@ -421,30 +403,29 @@ Row {data-height=800}
 
 ```{r map}
 inputPanel(
-  selectInput(inputId = "year", label = "Year",  choices = seq(2010,2019,by=1), 
-              selected = 2010)
-)
-
+                               sliderInput("years",
+                                           "Choose a year:",
+                                           min = 2010,
+                                           max = 2019,
+                                           value = 1,
+                                           sep = ""),
+                               selectInput("select", 
+                                           label = "Select Variable:", 
+                                           choices = colnames(data)[2:4], 
+                                           selected = 1))
 renderPlot({
-  
-  n <- 4
-colstops <- data.frame(
-  q = 0:n/n,
-  c = substring(viridis(n + 1), 0, 7)) %>%
-  list_parse2()
-
-
-highchart() %>%
-  hc_add_series_map(usgeojson, ili4[ili4$YEAR==input$year, ], name = "Percentage",
-                    value = "percent", joinBy = c("woename", "REGION"),
-                    dataLabels = list(enabled = TRUE,
-                                      format = '{point.properties.postalcode}')) %>%
-  hc_colorAxis(stops = colstops) %>%
-  hc_legend(valueDecimals = 0, valueSuffix = "%") %>%
-  hc_mapNavigation(enabled = TRUE) %>%
-  hc_add_theme(thm)
-
+data_20 <- data[data$YEAR == input$years,]
+    data_20$value <- data_20[, input$select]
+    state_choropleth(data_20,
+                     title = input$select,
+                     num_colors    = 7)
 })
+
+renderDataTable({
+    data_20 <- data[data$YEAR == input$years,]
+    data_20$value <- data_20[, input$select]
+    data_20[order(data_20[input$select]), ]
+  })
 ```
 
 
