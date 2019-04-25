@@ -18,6 +18,12 @@ library(tidyr)
 library(shinythemes)
 library(data.table)
 library(forecast)
+library(rsconnect)
+library(plotly)
+library(Hmisc)
+library(shinythemes)      # Bootswatch color themes for shiny
+library(choroplethr)      # Creating Choropleth Maps in R
+library(choroplethrMaps)  # Maps used by the choroplethr package
 
 assignInNamespace("cedta.override", c(data.table:::cedta.override,"rmarkdown"), "data.table")
 
@@ -30,22 +36,41 @@ visits.national <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine
 
 visits.state <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/ILINet.csv")
 
+visits <- read_csv("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
+
 flutype.national <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/National_Positive_tests_type.csv")
 
 flutype.state <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/WHO_NREVSS_Public_Health_Labs.csv",skip=1)
 
 vaccine.national <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/usa_vaccination_data.csv")
+
+deaths <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/mortality_data.csv")
+
+National.Seasonal.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewBySeason.csv")
+
+National.Weekly.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewByWeek.csv")
+
+dat <- read.csv(url("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/ILINet.csv"))
 ```
 
-```{r}
+```{r constants}
 region.names <- c("national", unique(visits.state[,REGION]))
 age.groups <- names(visits.national)[c(4:6,8:9)]
 pred.length <- 4:52 #number of weeks want to plan ahead
 datatype <- c("Visit Rates for ILI", 
               names(flutype.national)[c(7,9,10,12,13)],
               age.groups)
+Years <- c(2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019)
+Ages <- c("0-4 yr","5-24 yr","25-64 yr","65+ yr")
+Regional.Cut <- c("National", "HHS Regions", "State", "Census")
+Seasons <- c("2010-11", "2012-13", "2013-14", "2014-15","2015-16", "2016-17", "2017-18", "2018-19")
+select.year<-c("All","2010-2011","2011-2012","2012-2013","2013-2014",
+                          "2014-2015","2015-2016","2016-2017","2017-2018",
+                          "2018-2019")
+Virus <- c("A (Unable to Subtype)","A (H1)","A (H3)","A (H1N1)pdm09","A (Subtyping not Performed)","B (Victoria Lineage)","B (Yamagata Lineage)","B (Lineage Unspecified)","H3N2v")
+```
 
-
+```{r cleaning}
 #date format change
 visits.national[,MONTH:=lubridate::month(as.Date(paste0(YEAR, "-", 
                                                         WEEK, "-", 10), 
@@ -54,10 +79,373 @@ visits.national[,date:=as.Date(paste(YEAR,MONTH,1,sep="-"))]
 visits.state[,MONTH:=lubridate::month(as.Date(paste0(YEAR, "-",WEEK, "-", 10),
                                               format = "%Y-%U-%u"))]
 visits.state[,date:=as.Date(paste(YEAR,MONTH,1,sep="-"))]
+
+visits$month<-lubridate::month(as.Date(paste0(visits$YEAR, "-", visits$WEEK, "-", 10), 
+                                       format = "%Y-%U-%u"))
+visits$date <- paste(visits$YEAR,visits$month,sep="-")
+
+
+dat$month<-lubridate::month(as.Date(paste0(dat$YEAR, "-", dat$WEEK, "-", 10), 
+                                    format = "%Y-%U-%u"))
+dat$date <- paste0(dat$YEAR, "-", dat$month, "-01")		
+dat$date <- as.Date(dat$date, "%Y-%m-%d")
+dat <- as.data.table(dat)
+dat$ILITOTAL <- as.numeric(dat$ILITOTAL)
+dat$'TOTAL.PATIENTS' <- as.numeric(dat$'TOTAL.PATIENTS')
+
+data <- dat %>% 
+  group_by(REGION, YEAR) %>%                           
+  summarise_at(c("ILITOTAL", "TOTAL.PATIENTS"), sum, na.rm = TRUE)
+
+data$ili.percent <- data$ILITOTAL / data$TOTAL.PATIENTS
+data$region <- data$REGION
+data$region <- sapply(data$region, tolower)
+data$REGION <- NULL
+data$YEAR <- as.integer(data$YEAR)
+data <- as.data.frame(data)
+
+#add the years
+visits$duration<-c(rep("2010-2011",52),
+                   rep("2011-2012",52),
+                   rep("2012-2013",52),
+                   rep("2013-2014",52),
+                   rep("2014-2015",52),
+                   rep("2015-2016",53),
+                   rep("2016-2017",52),
+                   rep("2017-2018",52),
+                   rep("2018-2019",25))
+
 flutype.national[,date:=as.Date(date)]
+
+#add index to vaccine
+vaccine.national[,date:=as.Date(paste(year,match(month, month.abb),"1",sep = "-"))]
 ``` 
 
-Modeling and Predictions
+```{r functions}
+
+percentage.table <- function(x, digits = 1){
+  tab <- table(x)
+  percentage.tab <- 100*tab/(sum(tab))
+  rounded.tab <- round(x = percentage.tab, digits = digits)
+  return(rounded.tab)                           
+}
+
+
+Add.Season.Column <- function(dat){
+  i <- 2010
+  for(i in Years){
+  dat[(Year==i & Week >=40) | (Year==i+1 & Week <=39),season := paste0(i,"-",substring(as.character(i+1),3))]
+  i <- i+1
+  }
+  return(dat)
+}
+
+count.table <- function(start,end){
+tab <- visits[YEAR>=start & YEAR <= end,.(tot=sum(ILITOTAL)),keyby = YEAR]
+return(tab)
+}
+
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+mean.diff <- function(x, y){
+  return(mean(x, na.rm=TRUE) - mean(y, na.rm=TRUE))
+}
+```
+
+```{r AgebyVirus}
+
+National.Seasonal.AgebyVirus <- National.Seasonal.AgebyVirus[Season %in% Seasons,]
+National.Weekly.AgebyVirus <- National.Weekly.AgebyVirus[Year %in% Years,]
+
+```
+
+
+```{r Season}
+
+
+National.Weekly.AgebyVirus <- Add.Season.Column(National.Weekly.AgebyVirus)
+
+```
+
+```{r Reshape}
+
+National.Weekly.AgebyVirus.long <- melt(National.Weekly.AgebyVirus, 
+                                        id.vars = c("Year", "Week", "Age Group","season"),
+                                        measure.vars = Virus)
+
+National.Seasonal.AgebyVirus.long <- melt(National.Seasonal.AgebyVirus, 
+                                        id.vars = c("Season", "Age Group"),
+                                        measure.vars = Virus)
+
+names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'variable'] <- 'Virus'
+names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'value'] <- 'Positive Specimens Reported'
+
+
+names(National.Seasonal.AgebyVirus.long)[names(National.Seasonal.AgebyVirus.long) == 'variable'] <- 'Virus'
+names(National.Seasonal.AgebyVirus.long)[names(National.Seasonal.AgebyVirus.long) == 'value'] <- 'Positive Specimens Reported'
+```
+
+Introduction
+=====================================  
+
+We want to first look at the total flu cases over the past 10 years using a time series plot and identify unusual patterns. For example, the 2018 flu season was the worst since the 2009 swine flu pandemic, and roughly 7.7% of all U.S. citizens seeking medical care experienced flu-like symptoms.
+
+Then the question becomes--is there a way to figure out who was most at risk for contracting a specific type of virus? We plan to break down the outbreak across different states and try to explore the distributions of various flu cases among different age groups. We will try to build interactive plots such as maps, area plots, and bar graphs.
+
+Visit Rates for Influenza-like Illness
+=====================================  
+Row {data-height=1000}
+-------------------------------------
+```{r respondents}
+#draw the time series plot using visits data
+inputPanel(
+  selectInput(inputId = "year", label = "Select Year:", 
+              choices = select.year, selected = select.year[1]),
+  
+  checkboxInput(inputId = "age", label = "Breakdown by Age Groups:", value = F)
+)
+
+renderPlot({
+  
+   if(input$year == "All"){
+    ili1<-visits%>% 
+         mutate(Date = paste(YEAR, month,1,sep = "-"),
+                Dates=as.Date(Date,"%Y-%m-%d")) %>%
+         group_by(Dates) %>%
+         summarise(ilitotal=mean(ILITOTAL,na.rm = T),
+                totalp=mean(TOTAL.PATIENTS,na.rm = T))%>%
+         mutate(Percentage=round(100*ilitotal/totalp,2))
+    
+    d=data.frame(date=as.Date('2018-02-1'),event='2018-02-1')
+
+    
+    if(input$age==F){
+
+       p1<-ggplot() +
+        geom_line(data=ili1, aes(x =Dates, y = Percentage),size=1,col="darkblue")+
+        ggtitle("Percentage of Total Reported Influenza Like Illnesses in the US (2010-2019)")+
+        labs(caption='Influenza-Like Illness is defined as fever and a cough and/or a sore throat in the absence of a known cause other than flu\nData Source: CDC Weekly US Influenza Surveillance Report')+
+        theme_economist_white(base_size = 16)+
+        xlab("Year") + ylab("Percentage (%) of ILI patients")+
+        theme(plot.title = element_text(hjust=0.5))+
+        theme(plot.caption=element_text(hjust=0))+
+        scale_x_date(date_breaks = "1 year", date_labels ='%Y')+
+        geom_vline(xintercept = as.numeric(as.Date(c('2018-2-1'))),linetype=4,col="blue")+
+        geom_text(data=d,mapping=aes(x=date,y=0,label=event),size=5,
+            color='blue',angle=90,vjust=1.3,hjust=.1)
+    }
+    else{
+    ili2<-visits%>% 
+            mutate(Date = paste(YEAR, month,1,sep = "-"),
+            Percentage=ILITOTAL/TOTAL.PATIENTS,
+            Dates=as.Date(Date,"%Y-%m-%d")) 
+    
+    area_dat= ili2 %>%  
+          select(Percentage,Dates,YEAR,i=ILITOTAL,young =`AGE.0.4`, 
+             young2 = `AGE.5.24`,mid =`AGE.25.49`,old = `AGE.50.64`,old2 = `AGE.65` ) %>% 
+          mutate(i=as.numeric(i),young  =as.numeric(young)+as.numeric(young2),
+          mid=as.numeric(mid),old =as.numeric(old)+as.numeric(old2) ) %>%
+          gather(key=ageGroup,value = ageGroupTotal,c(young,mid,old),factor_key=T)
+
+    area_dat2<-area_dat %>%
+         group_by(Dates,ageGroup)%>%
+         summarise(ageTotal=sum(ageGroupTotal))
+
+    p1<-ggplot() +
+        geom_area(data = area_dat2, aes(x = Dates, y = ageTotal, fill = ageGroup)) +
+        scale_fill_brewer(name="Age Groups",labels = c("0-24 years","25-49 years",
+                          "50+ years"),palette="YlGn",direction = -1) +
+        labs(x="Date",y="Flu Cases by Age Group")+
+        theme(plot.caption = element_text(hjust=0))+theme_economist_white(base_size = 16)+
+        scale_x_date(date_breaks = "1 year", date_labels ='%Y/%m')
+    }
+  p1
+   }
+
+  else{
+    ili1<-visits%>% 
+         filter(duration==input$year)%>%
+         mutate(Date = paste(YEAR, month,1,sep = "-"),
+                date2=as.Date(paste(YEAR,month,WEEK,sep="-"),"%Y-%m-%V"),
+         Percentage=round(100*ILITOTAL/TOTAL.PATIENTS,2),
+         Dates=as.Date(Date,"%Y-%m-%d"),
+         rowN=row_number())
+    
+  area_dat= ili1 %>%  
+    filter(duration==input$year) %>%
+    select(Percentage,Dates,WEEK,YEAR,i=ILITOTAL,young =`AGE.0.4`, 
+         young2 = `AGE.5.24`,mid =`AGE.25.49`,old = `AGE.50.64`,old2 = `AGE.65` ) %>% 
+    mutate(i=as.numeric(i),young  =as.numeric(young)+as.numeric(young2),
+         mid=as.numeric(mid),old =as.numeric(old)+as.numeric(old2),
+         row=row_number())%>%
+  #mutate(Dates = seq.Date(as.Date("2018/01/01"),as.Date("2019/03/01"),by="weeks")) %>%
+  gather(key=ageGroup,value = ageGroupTotal,c(young,mid,old),factor_key=T)
+
+  area_dat2<-area_dat %>%
+    group_by(ageGroup,Dates)%>%
+    summarise(ageTotal=sum(ageGroupTotal))
+    
+    if(input$age==F){
+      p1<-ggplot() +
+        geom_line(data=ili1, aes(rowN,  Percentage),size=1,col="darkblue")+
+        stat_smooth(color = "#FC4E07", fill = "#FC4E07",method = "loess")+
+        ggtitle("Percentage of Weekly Total Reported Influenza Like Illnesses in the US")+
+        labs(caption='Influenza-Like Illness is defined as fever and a cough and/or a sore throat in the absence of a known cause other than flu\nData Source: CDC Weekly US Influenza Surveillance Report')+
+        theme_economist_white(base_size = 16)+
+       ylab("Percentage (%) of ILI patients")+
+        theme(plot.title = element_text(hjust=0.5))+
+        theme (plot.caption=element_text(hjust=0),
+               axis.text.x=element_blank())+
+        xlab("Week") 
+        #scale_x_continuous(
+    #labels = paste("Week",c("40","50","8","18","28","38")," "))
+    }
+  else{
+    p1<-ggplot() +
+      geom_area(data = area_dat2, aes(x = Dates, y = ageTotal, fill = ageGroup)) +
+      scale_fill_brewer(name="Age Groups",labels = c("0-24 years","25-49 years",
+                             "50+ years"),palette="YlGn",direction = -1) +
+      labs(x="Date",y="Flu Cases by Age Group")+
+      scale_x_date(date_breaks = "1 month")+
+      theme(plot.caption = element_text(hjust=0))+
+      theme_economist_white(base_size = 14)
+  }
+p1
+  }
+   
+  
+})
+```
+
+Virus EDA
+===================================
+
+Inputs {.sidebar}
+-------------------------------------
+
+```{r AgebyView}
+inputPanel(
+selectInput(inputId="Seasons", label = "Select Seasons:", choices = Seasons, selected =
+Seasons[8]),
+checkboxGroupInput(inputId = "Age", label = "Age brackets:", choices=Ages, selected = Ages[1:4]),
+checkboxGroupInput(inputId = "Virus", label = "Virus:", choices=Virus, selected = Virus[1:9])
+)
+
+
+```
+
+
+Column {.tabset}
+-------------------------------------
+    
+### National Virus Distribution - Weekly
+    
+```{r}
+
+renderPlot({
+dat <- National.Weekly.AgebyVirus.long[season %in% input$Seasons & `Age Group` %in% input$Age & Virus %in% input$Virus,]
+dat <- dat %>% mutate(row = row_number())
+ggplot(dat, aes(reorder(Week,row),`Positive Specimens Reported`, fill = Virus))+geom_bar(stat="identity") + labs(x = "Week") +
+theme(axis.text.x = element_text(angle = 90))
+})
+```
+
+
+### National Virus Distribution - Seasonal
+    
+```{r}
+renderPlot({
+dat <- National.Seasonal.AgebyVirus.long[Season %in% input$Seasons & `Age Group` %in% input$Age & Virus %in% input$Virus,]
+dat <- dat[,.(Total=sum(`Positive Specimens Reported`)), by=c("Season","Virus","Age Group")][order(Season)]
+ggplot(dat,aes(x="",y=Total,fill=Virus))+geom_bar(stat="identity") + coord_polar("y", start=0)
+
+})
+``` 
+
+### Virus Distribution by Age - Weekly
+    
+```{r}
+
+renderPlot({
+dat <- National.Weekly.AgebyVirus.long[season %in% input$Seasons & `Age Group` %in% input$Age & Virus %in% input$Virus,]
+dat <- dat %>% mutate(row = row_number())
+ggplot(dat, aes(reorder(Week,row),`Positive Specimens Reported`, fill = Virus))+geom_bar(stat="identity") + labs(x = "Week") +
+theme(axis.text.x = element_text(angle = 90)) +
+facet_grid(~`Age Group`)
+})
+```
+
+
+### Virus Distribution by Age - Seasonal
+    
+```{r}
+renderPlot({
+dat <- National.Seasonal.AgebyVirus.long[Season %in% input$Seasons & `Age Group` %in% input$Age & Virus %in% input$Virus,]
+dat <- dat[,.(Total=sum(`Positive Specimens Reported`)), by=c("Season","Virus","Age Group")][order(Season)]
+ggplot(dat,aes(x="",y=Total,fill=Virus))+geom_bar(stat="identity") + coord_polar("y", start=0) +
+facet_grid(~`Age Group`)
+
+})
+``` 
+
+
+State Maps for ILI visit rates
+=====================================  
+Row {data-height=1000}
+-------------------------------------
+
+```{r}
+ui <- fluidPage(title = 'My First App!',
+                theme = shinythemes::shinytheme('flatly'),
+                
+                sidebarLayout(
+                  sidebarPanel(width = 3,
+                               sliderInput("years",
+                                           "Choose a year:",
+                                           min = 2010,
+                                           max = 2019,
+                                           value = 1,
+                                           sep = ""),
+                               selectInput("select", 
+                                           label = "Select Variable:", 
+                                           choices = colnames(data)[2:4], 
+                                           selected = 1)),
+                  
+                  mainPanel(width = 9, 
+                            tabsetPanel( 
+                              tabPanel(title = 'Output Map', 
+                                       plotOutput(outputId = "map")),
+                              tabPanel(title = 'Data Table', 
+                                       dataTableOutput(outputId = 'table'))))))
+
+server <- function(input, output) {
+  
+  
+  
+  output$map <- renderPlot({
+    data_20 <- data[data$YEAR == input$years,]
+    data_20$value <- data_20[, input$select]
+    state_choropleth(data_20,
+                     title = input$select,
+                     num_colors    = 7)
+  })
+  
+  output$table <- renderDataTable({
+    data_20 <- data[data$YEAR == input$years,]
+    data_20$value <- data_20[, input$select]
+    data_20[order(data_20[input$select]), ]
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+
+Models and Forecasts
 =====================================  
 Row {data-height=500}
 -------------------------------------
@@ -66,10 +454,10 @@ Row {data-height=500}
 inputPanel(
   #select region
   selectInput(inputId= "Region", label = "Select Region Level:",
-              choices = region.names, selected = region.names[1]),
+              choices = c('',region.names)), #selected = region.names[1]),
   #select data type to predict: visits or any flutype
   selectInput(inputId = "data.type", label = "Select Data",
-              choices = datatype, selected = datatype[1]),
+              choices = datatype), #selected = datatype[1]),
 
   #select weeks to predict ahead
   numericInput(inputId = "Pred.Length", 
@@ -80,10 +468,12 @@ inputPanel(
                label = "Number of previous weeks`:", min = 1, max = 445,
                value = 100, step = 5),
   
-  helpText("Loading model, will take more than 10 seconds, sorry for waiting...")
+  helpText("Loading model will take more than 10 seconds, sorry for waiting...")
 )
 
 renderPrint({
+  if(input$Region==""){print("Please select Region.")}
+  else{
   #national level
   if(input$Region=="national"){
     if(input$data.type %in% c(datatype[1], age.groups)){
@@ -133,10 +523,12 @@ renderPrint({
                    )
     result
   }
-})
+}})
 
 renderPlot({
   #national level
+  if(input$Region=="") {ggplot()}
+  else{
   {if(input$Region=="national"){
     if(input$data.type %in% c(datatype[1], age.groups)){
       if(input$data.type == datatype[1]){
@@ -204,5 +596,6 @@ renderPlot({
       labs(title = "Original data with Predictions")+
       theme(plot.title = element_text(hjust = 0.5))
   }}
-})
+}})
 ```
+
