@@ -47,6 +47,8 @@ total$date <- as.Date(as.yearmon(total$date, "%Y-%m"))
 total <- dplyr::arrange(total, date)
 total <- transform(total, percent.index=100*total$ili.percent/total$ili.percent[1], vaccine.index=100*total$rate/total$rate[1])
 
+cor(total$rate,total$ili.percent)
+
 ggplot(total, aes(date)) + 
   geom_line(aes(y = ili.percent, colour = "ili.percent")) + 
   geom_line(aes(y = rate, colour = "rate"))
