@@ -467,15 +467,15 @@ renderPrint({
   if(input$Region=="national"){
     if(input$data.type %in% c(datatype[1], age.groups)){
       if(input$data.type == datatype[1]){
-        series <- visits.national[,X..WEIGHTED.ILI] #ILI total rates
+        series <- visits.national[YEAR%in%2013:2017,X..WEIGHTED.ILI] #ILI total rates
       }
       else{
-        series <- visits.national[,get(input$data.type)] #ILI by age group
+        series <- visits.national[YEAR%in%2013:2017,get(input$data.type)] #ILI by age group
       }
     }
     else{
       if(input$data.type %in% datatype[2:6]){
-        series <- flutype.national[,get(input$data.type)] #flu type
+        series <- flutype.national[YEAR%in%2013:2017,get(input$data.type)] #flu type
       }
       else{
         series <- deaths[`AGE GROUP`=="All", 
@@ -486,7 +486,7 @@ renderPrint({
   else{
     #state level
     if(input$data.type == datatype[1]){
-      series <- visits.state[REGION==input$Region, 
+      series <- visits.state[REGION==input$Region&YEAR%in%2013:2017, 
                              na.omit(as.numeric(ILITOTAL)/as.numeric(`TOTAL PATIENTS`))]
       #visits
     }
@@ -527,15 +527,15 @@ renderPlot({
   {if(input$Region=="national"){
     if(input$data.type %in% c(datatype[1], age.groups)){
       if(input$data.type == datatype[1]){
-        series <- visits.national[,X..WEIGHTED.ILI] #ILI total rates
+        series <- visits.national[YEAR%in%2013:2017,X..WEIGHTED.ILI] #ILI total rates
       }
       else{
-        series <- visits.national[,get(input$data.type)] #ILI by age group
+        series <- visits.national[YEAR%in%2013:2017,get(input$data.type)] #ILI by age group
       }
     }
     else{
       if(input$data.type %in% datatype[2:6]){
-        series <- flutype.national[,get(input$data.type)] #flu type
+        series <- flutype.national[YEAR%in%2013:2017,get(input$data.type)] #flu type
       }
       else{
         series <- deaths[`AGE GROUP`=="All", 
@@ -546,7 +546,7 @@ renderPlot({
   else{
     #state level
     if(input$data.type == datatype[1]){
-      series <- visits.state[REGION==input$Region, 
+      series <- visits.state[REGION==input$Region&YEAR%in%2013:2017, 
                              na.omit(as.numeric(ILITOTAL)/as.numeric(`TOTAL PATIENTS`))] 
       #visits
     }
