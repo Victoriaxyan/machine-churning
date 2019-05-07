@@ -63,7 +63,8 @@ age.groups <- names(visits.national)[c(4:6,8:9)]
 pred.length <- 4:52 #number of weeks want to plan ahead
 datatype <- c("Visit Rates for ILI", 
               names(flutype.national)[c(7,9,10,12,13)],
-              age.groups)
+              age.groups,
+              "deaths")
 Years <- c(2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019)
 Ages <- c("0-4 yr","5-24 yr","25-64 yr","65+ yr")
 Regional.Cut <- c("National", "HHS Regions", "State", "Census")
@@ -328,7 +329,7 @@ p1
 })
 ```
 
-Virus EDA
+Virus
 ===================================
 
 Inputs {.sidebar}
@@ -449,11 +450,11 @@ inputPanel(
 
   #select weeks to predict ahead
   numericInput(inputId = "Pred.Length", 
-               label = "Number of weeks to predict:", min = 4, max = 104, 
+               label = "Number of weeks to predict (max 52):", min = 4, max = 52, 
                value = 52, step = 13),
   #select length of original data
   numericInput(inputId = "Orig.Length",
-               label = "Number of previous weeks`:", min = 1, max = 445,
+               label = "Number of previous weeks (max 445)`:", min = 1, max = 445,
                value = 100, step = 5),
   
   helpText("Loading model will take more than 10 seconds, sorry for waiting...")
@@ -473,7 +474,13 @@ renderPrint({
       }
     }
     else{
+      if(input$data.type %in% datatype[2:6]){
         series <- flutype.national[,get(input$data.type)] #flu type
+      }
+      else{
+        series <- deaths[`AGE GROUP`=="All", 
+                         as.numeric(gsub(",","",`NUM INFLUENZA DEATHS`))] #deaths
+      }
     }
   }
   else{
@@ -484,8 +491,8 @@ renderPrint({
       #visits
     }
     else{
-      if(input$data.type %in% age.groups){
-        series = NULL #no data for state level ILI visits by age groups
+      if(input$data.type %in% c(age.groups,"deaths")){
+        series = NULL #no data for state level ILI visits by age groups and deaths
       }
       else{
         series = flutype.state[REGION==input$Region,get(input$data.type)] #flu type
@@ -527,7 +534,13 @@ renderPlot({
       }
     }
     else{
-      series <- flutype.national[,get(input$data.type)] #flu type
+      if(input$data.type %in% datatype[2:6]){
+        series <- flutype.national[,get(input$data.type)] #flu type
+      }
+      else{
+        series <- deaths[`AGE GROUP`=="All", 
+                         as.numeric(gsub(",","",`NUM INFLUENZA DEATHS`))] #deaths
+      }
     }
   }
   else{
@@ -538,8 +551,8 @@ renderPlot({
       #visits
     }
     else{
-      if(input$data.type %in% age.groups){
-        series = rep(0,2) #no data for state level ILI visits by age groups
+      if(input$data.type %in% c(age.groups,"deaths")){
+        series = NULL #no data for state level ILI visits by age groups
       }
       else{
         series = flutype.state[REGION==input$Region,get(input$data.type)] #flu type
