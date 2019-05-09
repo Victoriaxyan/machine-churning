@@ -370,7 +370,7 @@ visits <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning
 ```
 
 
-```{r data cleaning for LSTM}
+```{r library for LSTM}
 # Modeling
 library(keras)
 library(tensorflow)
@@ -495,7 +495,7 @@ for(i in 1:Epochs ){
 ## Make predictions
 L = length(x_test)
 scaler = Scaled$scaler
-predictions = numeric(L)
+lstm.predictions = numeric(L)
 
 for(i in 1:L){
      X = x_test[i]
@@ -506,7 +506,7 @@ for(i in 1:L){
      # invert differencing
      yhat  = yhat + ts.ili.percent[(n+i)]
      # store
-     predictions[i] <- yhat
+     lstm.predictions[i] <- yhat
 }
 ```
 
@@ -515,35 +515,9 @@ for(i in 1:L){
 ## MSE
 ili.percent <- visits[,.(percent = ILITOTAL/TOTAL.PATIENTS)]
 actual <- ili.percent[c(379:441),]
-MSE <- (sqrt(mean((predictions - actual$percent)^2)))
+MSE <- (sqrt(mean((lstm.predictions - actual$percent)^2)))
 MSE
 ```
-
-
-
-```{r echo=FALSE, fig.height=3}
-series <- visits.national[1:378, X..WEIGHTED.ILI]
-
-
-orig <- data.table(week = 1:378,
-                   data = series)
-pred <- data.table(week = 379:441,
-                       data = c(predictions))
-
-ggplot(data = orig, aes(x=week, y=data))+
-  geom_line(size = 1, col = "dodgerblue")+
-  geom_smooth(data = pred, aes(x=week, y=data, ymax=max(predictions),
-                               ymin=min(predictions)),
-              col = "LightCoral", size = 1, stat="identity")+
-  geom_vline(xintercept = 52*4, linetype=4, col="brown")+
-  geom_text(data = data.frame(week = 52*4, 
-                              event = "March 2019(12th week)"),
-            aes(x = week, y=0, label = event),
-            size = 4, col = "Black", angle = 0, vjust=1.3, hjust=.5)+
-  labs(title = "Forecasts for National ILI Visits Rates (%)")+
-  theme(plot.title = element_text(hjust = 0.5))
-```
-
 
 # Results and Interpretation
 
@@ -696,7 +670,36 @@ ggplot(data = orig, aes(x=week, y=data))+
 Flus could be deadly, so it’s also important to discover the general trend for the national ILI deaths data for all age groups. The above figure shows data for the previous national ILI deaths, and the model’s forecasts for March, 2019 and beyond. The predictions indicate a sudden increase for the number of deaths in spring, 2019, which will reach around 1000 people, but we notice the confidence band is pretty wide. Also, the number will decrease during summer, and rise again in winter, 2019. In general, the pattern is similar compared with the trend for the rate of ILI visits. By analyzing the past we can only hope to learn for the future. Now that we know the general trend of a flu outbreak, we as a nation can take the necessary precautions to do our best to not repeat the past.
 
 ## Results for the LSTM Models
-[...]
+
+## Forecasting with LSTM model
+
+### Forecasting the national ILI visits trend for all age groups
+
+
+
+```{r echo=FALSE, fig.height=3}
+series <- visits.national[, X..WEIGHTED.ILI]
+predictions <- lstm.predictions
+
+orig <- data.table(week = 1:(52*4),
+                   data = series[-1:(-(length(series)-52*4))])
+pred <- data.table(week = (52*4+1):(52*4+length(predictions)),
+                       data = c(predictions))
+
+ggplot(data = orig, aes(x=week, y=data))+
+  geom_line(size = 1, col = "dodgerblue")+
+  geom_smooth(data = pred, aes(x=week, y=data, ymax=max(lstm.predictions),
+                               ymin=min(lstm.predictions)),
+              col = "LightCoral", size = 1, stat="identity")+
+  geom_vline(xintercept = 52*4, linetype=4, col="brown")+
+  geom_text(data = data.frame(week = 52*4, 
+                              event = "March 2019(12th week)"),
+            aes(x = week, y=0, label = event),
+            size = 4, col = "Black", angle = 0, vjust=1.3, hjust=.5)+
+  labs(title = "Forecasts for National ILI Visits Rates (%)")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
 
 
 # Assumptions
