@@ -91,15 +91,15 @@ mean.diff <- function(x, y){
 
 # Introduction
 
-Reducing the impact of seasonal influenza epidemics is of supreme importance for public health authorities. The Centers for Disease Control and Prevention (CDC) estimates that the flu has caused between 9.3 million to 49.0 million illnesses and between 12,000 – 79,000 deaths since 2010. While the flu places a substantial burden on the health of people each year, as we can see from those wide range of estimates, its level of impact can be difficult to forecast.
+Reducing the impact of seasonal influenza epidemics is of supreme importance for public health authorities. The Centers for Disease Control and Prevention (CDC) estimates that the flu has caused between 9.3 million to 49.0 million illnesses and between 12,000 – 79,000 deaths since 2010 [1]. While the flu places a substantial burden on the health of people each year, as we can see from those wide range of estimates, its level of impact can be difficult to forecast.
 
 At the onset of this project, we set out with the objective of understanding the intensity of the 2018-2019 flu season given the data on previous seasons. We were primarily trying to predict the national patient visits to health care providers for influenza-like illness (ILI) symptoms for flu season 2018- 2019. Additionally, we aimed to predict the ILI visits at state level - specifically for New York. Furthermore, we sought to predict the deaths due to ILI at a national level. For this purpose, we ran several statistical models such as ARIMA, Holt’s Winters Method and LSTA etc. We saw that ARIMA gives the best prediction for our data.
 
 # Sources of Data
 
-The data that we have used in this analysis comes from CDC’s Flu Portal, which provides information on influenza in the United States from 1997 to 2018. The flu incidence data is broken down by Census Division and State, and by either public health or clinical laboratory. It includes information such as the weekly total number of specimens tested, the number of positive influenza tests, and the percent positive by influenza virus type. Due to the fact that we had missing data prior to 2010, we decided to focus on data from 2010 to 2018 only for this project. Typically, a flu season starts at week 40 of the previous year and lasts until week 39 of the current year, and influenza-like illness is defined as a fever or a cough in the absence of a known cause other than flu.  
+The data that we have used in this analysis comes from CDC’s Flu Portal [2], which provides information on influenza in the United States from 1997 to 2018. The flu incidence data is broken down by Census Division and State, and by either public health or clinical laboratory. It includes information such as the weekly total number of specimens tested, the number of positive influenza tests, and the percent positive by influenza virus type. Due to the fact that we had missing data prior to 2010, we decided to focus on data from 2010 to 2018 only for this project. Typically, a flu season starts at week 40 of the previous year and lasts until week 39 of the current year, and influenza-like illness is defined as a fever or a cough in the absence of a known cause other than flu.  
 
-We also include CDC’s flu vaccination data, which provides information on the percentage of people vaccinated for each state and nationwide during each month of flu season and has subgroup data as well such as the percentage vaccinated for children and adults. In addition, we collect CDC’s data on the number of flu deaths, which presents the number of people nationwide who have died of flu from 2010 to 2018. Another source of data is the CDC’s national mortality data. We believe this would provide additional information in helping us better understand our topic.   
+We also include CDC’s flu vaccination data [3], which provides information on the percentage of people vaccinated for each state and nationwide during each month of flu season and has subgroup data as well such as the percentage vaccinated for children and adults. In addition, we collect CDC’s data on the number of flu deaths [4], which presents the number of people nationwide who have died of flu from 2010 to 2018. Another source of data is the CDC’s national mortality data. We believe this would provide additional information in helping us better understand our topic. Furthermore, we look at the influenza virus type distribution at a national level [5]. This is helpful in understanding what are the most deadly virus types across different age groups.
 
 We believe all the information we have is reliable and representative of the population we are studying because it comes from CDC, which is the leading national public health institute. Therefore, our data should be accurate and will offer us a precise view of what was going on during previous flu seasons.   
 
@@ -202,6 +202,36 @@ We wanted to take a look at the relationship between flu vaccines and visits to 
  
 However, this graph fleshes out the relationship between flu vaccines and visits in a way that cannot be captured merely by that correlation. These values are indexed to 100 for the first data point of our dataset (in this case, October 2010). First off is the clear seasonality; it is obvious when the flu season spikes and then recedes each year. Second, there are noted lagged effects – notice that the red line, which is the indexed percent visits to the hospital due to the flu, tends to consistently peak 2-3 months before the peak of the aqua line, which is the indexed percent of people vaccinated in the USA. Finally, the % of people that are vaccinated tends to be fairly stable – the aqua line mostly stays the same from year to year. However, the percent of flu visits is significantly more volatile, jumping around from very low levels during 2011-12 to extremely high levels during the very bad 2017-18 flu season. Once again, this illustrates the high level of variation and challenges in forecasting the level of flu incidence each year.  
 
+###  Flu Virus Plots
+
+We wanted to understand the distribution of different Influenza viruses found in Influenza Positive specimens. This will be helpful in identifying the most deadly virus types and subtypes across different seasons and age groups at a national level data.
+
+As an example, we will look at season 2017-18. For season 2017-18, we see that A(H3) abd B (Yamagata Lineage) had the most impact at a national level and across all age groups.
+
+   
+```{r}
+Season <- '2017-18'
+Ages <- c("0-4 yr","5-24 yr","25-64 yr","65+ yr")
+dat <- National.Weekly.AgebyVirus.long[season %in% Season & `Age Group` %in% Ages,]
+dat <- dat %>% mutate(row = row_number())
+gg <- ggplot(dat, aes(reorder(Week,row),`Positive Specimens Reported`, fill = Virus))+geom_bar(stat="identity") + labs(x = "Week") + 
+theme(axis.text.x = element_text(angle = 90))
+ggplotly(gg)
+```
+
+Looking at the age cuts, we notice that the distribution of ILI virus is pretty much same across the differecne age brackets.
+
+```{r}
+Season <- '2017-18'
+Ages <- c("0-4 yr","5-24 yr","25-64 yr","65+ yr")
+dat <- National.Weekly.AgebyVirus.long[season %in% Season & `Age Group` %in% Ages,]
+dat <- dat %>% mutate(row = row_number())
+gg <- ggplot(dat, aes(reorder(Week,row),`Positive Specimens Reported`, fill = Virus))+geom_bar(stat="identity") + labs(x = "Week") + 
+theme(axis.text.x = element_text(angle = 90)) + facet_grid(~`Age Group`)
+ggplotly(gg)
+```
+
+## Modelling
 
 ## Time Series Modeling 
 
@@ -471,6 +501,21 @@ Apart from the limitations, there are uncertainties about our selection of train
 
 
 # References
+
+[1] Centers for Disease Control and Prevention. (n.d.). Disease Burden of Influenza. Retrieved from cdc.gov: https://www.cdc.gov/flu/about/burden/index.html
+
+[2] Centers for Disease Control and Prevention. (n.d.). FLU VIEW. Retrieved from gis.cdc.gov: https://gis.cdc.gov/grasp/fluview/fluportaldashboard.html
+
+[3] Centers for Disease Control and Prevention. (n.d.). 2010-11 through 2017-18 Influenza Seasons Vaccination Coverage Trend Report. Retrieved from cdc.gov: https://www.cdc.gov/flu/fluvaxview/reportshtml/trends/index.html
+
+[4] Centers for Disease Control and Prevention. (n.d.). Flu View: Pneumonia and Influenza Mortality Surveillance from the National Center for Health Statistics Mortality Surveillance System. Retrieved from gis.cdc.gov: https://gis.cdc.gov/grasp/fluview/mortality.html
+
+[5] Centers for Disease Control and Prevention. (n.d.). Age Group Distribution of Influenza Positive Specimens Reported by Public Health Laboratories, National Summary. Retrieved from gis.cdc.gov: https://gis.cdc.gov/grasp/fluview/flu_by_age_virus.html
+
+
+
+
+
 
 CDC’s Flu Portal Dashboard
 https://gis.cdc.gov/grasp/fluview/fluportaldashboard.html (Links to an external site.)Links to an external site.
