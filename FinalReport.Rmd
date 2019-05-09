@@ -1,0 +1,749 @@
+---
+title: "Study on Flu Seasons"
+subtitle: "Final Project for GR5243"
+author: "Xueyan Zou, Rachel Wu, Saloni Mohan, Namson Ngo-Le"
+date: "2019/5/1"
+output:
+  prettydoc::html_pretty:
+  theme: cayman
+highlight: github
+---
+
+```{r library, echo=FALSE, message=FALSE}
+library(dplyr)
+library(flexdashboard)
+library(readxl)
+library(readr)
+library(shiny)
+library(rmarkdown)
+library(knitr)
+library(DT)
+library(ggplot2)
+library(ggthemes)
+library(tidyr)
+library(shinythemes)
+library(data.table)
+library(forecast)
+library(rsconnect)
+library(plotly)
+library(Hmisc)
+library(tseries)
+
+library(keras)
+install_keras()
+
+library(tidyverse)
+library(glue)
+library(forcats)
+
+# Time Series
+library(timetk)
+library(tidyquant)
+library(tibbletime)
+
+# Visualization
+library(cowplot)
+
+# Preprocessing
+library(recipes)
+
+# Sampling / Accuracy
+library(rsample)
+library(yardstick) 
+
+# Modeling
+library(keras)
+
+```
+
+```{r readData, echo=FALSE, message=FALSE}
+visits.national <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
+
+visits.state <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/ILINet.csv")
+
+deaths <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/mortality_data.csv")
+
+National.Seasonal.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewBySeason.csv")
+
+National.Weekly.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewByWeek.csv")
+```
+
+
+```{r constants, echo=FALSE, message=FALSE}
+Years <- c(2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019)
+Ages <- c("0-4 yr","5-24 yr","25-64 yr","65+ yr")
+Regional.Cut <- c("National", "HHS Regions", "State", "Census")
+Seasons <- c("2010-11", "2012-13", "2013-14", "2014-15","2015-16", "2016-17", "2017-18", "2018-19")
+Virus <- c("A (Unable to Subtype)","A (H1)","A (H3)","A (H1N1)pdm09","A (Subtyping not Performed)","B (Victoria Lineage)","B (Yamagata Lineage)","B (Lineage Unspecified)","H3N2v")
+
+```
+
+
+```{r functions, echo=FALSE, message=FALSE}
+
+percentage.table <- function(x, digits = 1){
+  tab <- table(x)
+  percentage.tab <- 100*tab/(sum(tab))
+  rounded.tab <- round(x = percentage.tab, digits = digits)
+  return(rounded.tab)                           
+}
+
+
+Add.Season.Column <- function(dat){
+  i <- 2010
+  for(i in Years){
+  dat[(Year==i & Week >=40) | (Year==i+1 & Week <=39),season := paste0(i,"-",substring(as.character(i+1),3))]
+  i <- i+1
+  }
+  return(dat)
+}
+
+count.table <- function(start,end){
+tab <- visits[YEAR>=start & YEAR <= end,.(tot=sum(ILITOTAL)),keyby = YEAR]
+return(tab)
+}
+
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+mean.diff <- function(x, y){
+  return(mean(x, na.rm=TRUE) - mean(y, na.rm=TRUE))
+}
+
+
+```
+
+# Introduction
+
+Reducing the impact of seasonal influenza epidemics is of supreme importance for public health authorities. The Centers for Disease Control and Prevention (CDC) estimates that the flu has caused between 9.3 million to 49.0 million illnesses and between 12,000 – 79,000 deaths since 2010 [1]. While the flu places a substantial burden on the health of people each year, as we can see from those wide range of estimates, its level of impact can be difficult to forecast.
+
+At the onset of this project, we set out with the objective of understanding the intensity of the 2018-2019 flu season given the data on previous seasons. We were primarily trying to predict the national patient visits to health care providers for influenza-like illness (ILI) symptoms for flu season 2018- 2019. Additionally, we aimed to predict the ILI visits at state level - specifically for New York. Furthermore, we sought to predict the deaths due to ILI at a national level. For this purpose, we ran several statistical models such as ARIMA, Holt’s Winters Method and LSTA etc. We saw that ARIMA gives the best prediction for our data.
+
+# Sources of Data
+
+The data that we have used in this analysis comes from CDC’s Flu Portal [2], which provides information on influenza in the United States from 1997 to 2018. The flu incidence data is broken down by Census Division and State, and by either public health or clinical laboratory. It includes information such as the weekly total number of specimens tested, the number of positive influenza tests, and the percent positive by influenza virus type. Due to the fact that we had missing data prior to 2010, we decided to focus on data from 2010 to 2018 only for this project. Typically, a flu season starts at week 40 of the previous year and lasts until week 39 of the current year, and influenza-like illness is defined as a fever or a cough in the absence of a known cause other than flu.  
+
+We also include CDC’s flu vaccination data [3], which provides information on the percentage of people vaccinated for each state and nationwide during each month of flu season and has subgroup data as well such as the percentage vaccinated for children and adults. In addition, we collect CDC’s data on the number of flu deaths [4], which presents the number of people nationwide who have died of flu from 2010 to 2018. Another source of data is the CDC’s national mortality data. We believe this would provide additional information in helping us better understand our topic. Furthermore, we look at the influenza virus type distribution at a national level [5]. This is helpful in understanding what are the most deadly virus types across different age groups.
+
+We believe all the information we have is reliable and representative of the population we are studying because it comes from CDC, which is the leading national public health institute. Therefore, our data should be accurate and will offer us a precise view of what was going on during previous flu seasons.   
+
+# Examination of the Data
+
+As mentioned above, we have data on flu visits, flu tests, levels of flu vaccination, flu mortality, and flu viruses from the CDC. These were separate datasets that we downloaded from the CDC website. We will discuss some of the challenges with working with this data in order. First off, let us look at flu visits data:
+
+```{r flu exam_i}
+doc_i_have_the_flu <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
+doc_i_have_the_flu.cleaned <- doc_i_have_the_flu[,c(2,3,4,5,6,8,9,10,11,12)]
+head(doc_i_have_the_flu.cleaned,5)
+```
+
+This data reports the 'number of patients with influenza-like illness' (ILITOTAL) 'total number of patients seen' (TOTAL.PATIENTS), and 'number of health care providers in the USA' (NUM.OF.PROVIDERS), broken down by age group. Note that ILITOTAL is just the sum of the counts of all of the age groups. This dataset runs from week 40 of 2010 to the week 12 of 2019, and there are no missing values anywhere. In isolation, it is relatively easy to clean up and work with. It is only when we start looking at other datasets that more complications arise; for example, here is the state-level data:
+
+```{r exam_ii}
+states <- read.csv(url("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/State_Data/ILINet.csv"))
+head(states,5)
+```
+
+As we can see, this data is a bit messier. It has data by state, but sub-age group level data seems to be missing. In addition, the state of Florida is missing data for a lot of the dataset. This meant that statistical models that we wished to run on the national level that controlled for age group could not be done on the state level. Now, let's look at the flu test data:
+
+```{r exam_iii}
+needles <- read.csv(url("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/National_Positive_tests_type.csv"))
+head(needles,5)
+```
+
+This dataset reports the number of positive tests for different subtypes of flu (A (H1), B, H3n2v and so forth) on the national level from 2010 to 2019. The main challenge with forecasting this data was that the likelihood of contracting each subtype did not stay constant over time - some years, the H1N1 dominated, while in others an unspecified A type was the leading cause, and in other years it was the B type Because of this, we chose not to make forecasting the incidence of different flu types a focus of our models
+
+```{r exam_iv}
+not_autism <- read.csv(url("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/usa_vaccination_data.csv"))
+head(not_autism,5)
+```
+
+This dataset on levels of flu vaccination in the USA is split into months rather than weeks, as in the flu visits data above. Second, the age groups are different from those of the flu visits data: 0-4, 4-18, 18-50, 50-64, and 65+ here, and 0-4, 5-24, 25-49, 50-64, 65+ for the flu visits data. While we were able to convert the weeks to months using the lubridate package in R, this meant that we would have to drop age groups as a predictor if we also wanted to incorporate vaccination data into our forecasting models. We explored the strength of the relationship between the number of people vaccinated and the level of flu incidence further in the investigative section. 
+
+```{r exam_v}
+mort <- read.csv(url("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/mortality_data.csv"))
+mort <- mort[,c(1,2,3,4,5,8,9,10)]
+head(mort,5)
+```
+
+Looking at the mortality data - in other words, the amount of people who die due to the flu. First off, the CDC has many cautionary warnings about this data, that it is difficult to isolate the flu as the cause of a death due to the prevalence of other complicating health factors, the unreliability of 'cause of death' listings on death certificates, and a likely underreporting due to patients who are often not tested for seasonal influenza. Even so, the dataset is still solid - it has CDC estimates of the number of influenza and pneumonia deaths as well as total deaths for each week from 2010 to 2019, so it is still possible to generate reliable forecasting estimates from the data. The issue is an external one about the true validity of the mortality estimates.
+
+```{r exam_vi}
+# National Virus by Age
+National.Seasonal.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewBySeason.csv")
+National.Weekly.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewByWeek.csv")
+head(National.Seasonal.AgebyVirus,5)
+head(National.Weekly.AgebyVirus,5)
+```
+
+Finally, the national virus data shows how different viruses affected different age groups. For the purpose of visualisation, we will convert this dataset into long format.
+
+
+```{r Season, , echo=FALSE, warning=FALSE}
+
+
+National.Weekly.AgebyVirus <- Add.Season.Column(National.Weekly.AgebyVirus)
+
+```
+
+```{r Reshape}
+
+National.Weekly.AgebyVirus.long <- melt(National.Weekly.AgebyVirus, 
+                                        id.vars = c("Year", "Week", "Age Group","season"),
+                                        measure.vars = Virus)
+
+National.Seasonal.AgebyVirus.long <- melt(National.Seasonal.AgebyVirus, 
+                                        id.vars = c("Season", "Age Group"),
+                                        measure.vars = Virus)
+
+names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'variable'] <- 'Virus'
+names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'value'] <- 'Positive Specimens Reported'
+
+
+names(National.Seasonal.AgebyVirus.long)[names(National.Seasonal.AgebyVirus.long) == 'variable'] <- 'Virus'
+names(National.Seasonal.AgebyVirus.long)[names(National.Seasonal.AgebyVirus.long) == 'value'] <- 'Positive Specimens Reported'
+```
+
+# Investigation
+
+## EDA
+
+### Time series plot
+
+First, we want to start by exploring how flu cases were distributed across time. In order to get a general idea about what was happening, let’s take a look at the percentage of flu cases over the past 10 years. Clearly, we can notice some seasonal effects, and the numbers of flu cases usually increase during winter and spring, which actually makes sense. In addition, we tend to see a peak in flu cases each year.   
+
+However, if we focus on 2018, the highest percentage almost reaches 8% in February, 2018, while for other years, usually the highest percentages are around 4-6%. According to the federal health officials, more than 80,000 Americans died because of flu in the winter of 2017-2018, which marked the highest number in over a decade. One reason for this outbreak was probably due to the poor performance of 2018’s flu vaccine against most of the common strains. Estimates released by CDC show the 2018’s vaccine was only 36% effective against influenza A and B, and only 25% effective against the most common strain, H3N2.  
+
+### Area plot
+
+Then our question becomes, who in 2018 was most at risk? To explore further, we must break down the population into approximately equally spaced age groups, and look at the total number of influenza like illnesses within each. The area plot paints a staggering picture. At first glance it’s difficult to miss that those below the age of 24 were at the highest risk of contracting the flu. At the flu’s peak, the number of flu cases of patients younger than 24 almost equal the sum of the number of flu cases of patients above age 24; with only around 13,000 cases in the age bracket above 24 as compared to almost 17,000 cases in the age bracket below 24.  
+
+We can also observe the same pattern for all the other flu seasons from 2010-2019. All of this information really gives us great insight into who needs to take the most precaution before next flu season. As a nation we need to be sure to take care of the younger generation during the next outbreak in order to mitigate the effect of the flu.  
+
+###  Flu Vaccine Plot
+
+We wanted to take a look at the relationship between flu vaccines and visits to the doctor for the flu, because we were not sure of the statistical relationship between the two – would higher levels of flu vaccination correlate to increased or decreased visits for the flu? There are arguments both ways; if the flu vaccine is effective then less people would need to visit the doctor, but higher levels of flu vaccination may go together with more serious seasons of the flu, in which more people would need to visit the doctor. The correlation between the two variables is reasonably strong: 0.47, suggesting that higher levels of flu vaccination are associated with higher levels of flu visits.  
+ 
+However, this graph fleshes out the relationship between flu vaccines and visits in a way that cannot be captured merely by that correlation. These values are indexed to 100 for the first data point of our dataset (in this case, October 2010). First off is the clear seasonality; it is obvious when the flu season spikes and then recedes each year. Second, there are noted lagged effects – notice that the red line, which is the indexed percent visits to the hospital due to the flu, tends to consistently peak 2-3 months before the peak of the aqua line, which is the indexed percent of people vaccinated in the USA. Finally, the % of people that are vaccinated tends to be fairly stable – the aqua line mostly stays the same from year to year. However, the percent of flu visits is significantly more volatile, jumping around from very low levels during 2011-12 to extremely high levels during the very bad 2017-18 flu season. Once again, this illustrates the high level of variation and challenges in forecasting the level of flu incidence each year.  
+
+###  Flu Virus Plots
+
+We wanted to understand the distribution of different Influenza viruses found in Influenza Positive specimens. This will be helpful in identifying the most deadly virus types and subtypes across different seasons and age groups at a national level data.
+
+As an example, we will look at season 2017-18. For season 2017-18, we see that A(H3) abd B (Yamagata Lineage) had the most impact at a national level and across all age groups.
+
+   
+```{r}
+Season <- '2017-18'
+Ages <- c("0-4 yr","5-24 yr","25-64 yr","65+ yr")
+dat <- National.Weekly.AgebyVirus.long[season %in% Season & `Age Group` %in% Ages,]
+dat <- dat %>% mutate(row = row_number())
+gg <- ggplot(dat, aes(reorder(Week,row),`Positive Specimens Reported`, fill = Virus))+geom_bar(stat="identity") + labs(x = "Week") + 
+theme(axis.text.x = element_text(angle = 90))
+ggplotly(gg)
+```
+
+Looking at the age cuts, we notice that the distribution of ILI virus is pretty much same across the differecne age brackets.
+
+```{r}
+Season <- '2017-18'
+Ages <- c("0-4 yr","5-24 yr","25-64 yr","65+ yr")
+dat <- National.Weekly.AgebyVirus.long[season %in% Season & `Age Group` %in% Ages,]
+dat <- dat %>% mutate(row = row_number())
+gg <- ggplot(dat, aes(reorder(Week,row),`Positive Specimens Reported`, fill = Virus))+geom_bar(stat="identity") + labs(x = "Week") + 
+theme(axis.text.x = element_text(angle = 90)) + facet_grid(~`Age Group`)
+ggplotly(gg)
+```
+
+## Modelling
+
+## Time Series Modeling 
+
+### 1. ARIMA Models
+
+This part of our project entailed developing predictive models using deaths and ILI visits data on both national and state levels for previous flu seasons. Due to fact that the modeling techniques are basically the same for all the time series, we will only discuss the general procedure for fitting the models. The structures of our datasets indicate we are working on the time series data, and one of the most frequently used models for time series is SARIMA models.   
+
+Let’s first take the visit rates for the influenza-like illness in the national level of all age groups as an example. The form of SARIMA model is:
+
+$$\mbox{SARIMA}(p,d,q)\times(P,D,Q)_S$$ ,
+where the lower case letters are orders for non-seasonal part of ARIMA models, and capital letters are for the seasonal part.  In addition, we have
+
+$$\phi(B)\Phi(B^S)Y_t=\theta(B)\Theta(B^S)Z_t, \{Z_t\}\sim WN(0,\sigma^2)$$ ,
+where 
+$$\phi(B)=1-\phi_1B-\cdots-\phi_pB^p, \Phi(B)=1-\Phi_1B-\cdots-\Phi_pB^p$$
+$$\theta(B)=1+\theta_1B+\cdots+\theta_pB^p, \Phi(B)=1+\Theta_1B+\cdots+\Theta_pB^p$$
+and $$Y_t=(1-B)^d(1-B^S)^DX_t$$ ,
+
+Where $X_t$ is the original procedure and $Y_t$ is a causal ARMA process after the differencing of $X_t$.  
+
+Our data is weekly data from 2010 to 2019, and based on the previous exploratory data analysis, the patterns for the flu outbreaks are similar for each year, so it is sufficient to believe that the seasonality exists. As a result, the seasonality of our time series is 52 because there are in total 52 weeks in a year.  
+
+The general model selection is based on a combination of exploratory analysis (ACF and PACF plots) and hypothesis testing (stationarity). After deciding the seasonality, we want to check whether the series is a stationary process. Stationarity requires mean 0 and variance as a constant. If the variance changes over time, we should take logarithm or difference the data until the series is stationary. The usual way to check stationarity is to use Augmented Dikey-Fuller Test, which is the `adf.test` function in R.   
+
+```{r warning=FALSE,echo=FALSE}
+diff.log.visits <- diff(log(visits.national[,X..WEIGHTED.ILI]),12)
+adf.test(diff.log.visits)
+```
+
+The p-value is 0.01, suggesting that the series is now stationary. Thus, we can check its ACF and PACF plot to select orders.  
+
+```{r adftest, echo=TRUE, fig.height=3}
+par(mfrow=c(1,2))
+acf(diff.log.visits, lag.max = 100, main=NA)
+pacf(diff.log.visits, lag.max = 100, main=NA)
+```
+
+Both the ACF and PACF tail off, and at a first glance, it's hard to decide the orders for our models. Thus, a better way is to try several possible models and compare them based on a certain criteria. A natural thought will be comparing the AICc criteria. A model with lower AICc suggests a better balance between smaller parameter space and lower bias. To achieve this, we can use `auto.arima` function, which uses stepwise methods to select models with the lowest AICc.  
+
+Besides, we want to divide our data into a training set (data before 2017) and a validation set (data for 2018 - 2019) so that we can compare the MSEs between different models. Our best model will be a model with lower MSE and AICc. Also, we want to explore how the size of training set affects the model. In order to do so, we’ll be trying 3 different training set sizes: data for 2010-2017, 2013-2017, and 2015-2017.  
+
+In conclusion, one way to quantify the performance of each model is to introduce a scoring function: 
+$$Score = 0.3 * AICc + 0.7 * Scaled MSE$$, and the ultimate goal is to select the best time series model and a training set size that would minimize this score. 
+
+```{r echo=FALSE,warning=FALSE}
+train.time <- list(2010:2017, 2013:2017, 2015:2017)
+
+train <- list()
+models <- list()
+aicc <- c()
+for(i in 1:3){
+  train[[i]] <- ts(visits.national[YEAR%in%train.time[[i]],
+                                   X..WEIGHTED.ILI], frequency = 52)
+  models[[i]] <- auto.arima(train[[i]])
+  aicc[i] <- round(models[[i]]$aicc, 3)
+}
+
+# validation set
+validation <- visits.national[YEAR%in%2018:2019, X..WEIGHTED.ILI]
+n.ahead <- length(validation) # lags to predict
+mse <- c()
+for(i in 1:3){mse <- c(mse, 
+                       round(sum((forecast(models[[i]], h=n.ahead)$mean-validation)^2),3))}
+
+datatable(data.table(
+  train.set = c("2010-2017", "2013-2017", "2015-2017"),
+  aicc = aicc, mse = mse, 
+  aicc_mse = round(0.3*(aicc-mean(aicc))+0.7*(mse-mean(mse)),3)))
+```
+
+We can see that the model with training set of 2013-2017 data, AICc=-33.014 and MSE=35.982 would be the best model. The model information is as following. It's a SARIMA$(3,0,0)\times(1,1,1)$ model.
+
+```{r echo=FALSE,warning=FALSE}
+models[[2]]
+```
+
+### 2. Holt-Winters Models
+
+Holt-Winters is another well-known model for modeling the time series. It determines the parameters by minimizing squared prediction error. We apply this model by directly using the `HoltWinters` function in R.
+
+```{r echo=FALSE}
+models.HW <- list()
+for(i in 1:3){models.HW[[i]]=HoltWinters(train[[i]])}
+mse.HW <- c()
+for(i in 1:3){mse.HW <- c(mse.HW, round(sum((forecast(
+  models.HW[[i]], h=n.ahead)$mean-validation)^2),3))}
+datatable(data.table(
+  train.set = c("2010-2017", "2013-2017", "2015-2017"),
+  mse = mse.HW))
+```
+
+Based on the above results, Holt-Winters doesn't seem to be a good fit because it has a much higher MSE compared with the previous ARIMA models. However, it also suggests that the training set with 2013-2017 data is more appropriate.
+
+### 3. LSTM Models
+
+A powerful type of neural network designed to handle sequence dependence is called recurrent neural networks. The Long Short-Term Memory network or LSTM network is a type of recurrent neural network used in deep learning because very large architectures can be successfully trained.
+
+Long Short Term Memory (LSTM) networks are special kind of Recurrent Neural Network (RNN) that are capable of learning long-term dependencies. In regular RNN small weights are multiplied over and over through several time steps and the gradients diminish asymptotically to zero- a condition known as vanishing gradient problem.
+
+The Long Short-Term Memory recurrent neural network has the promise of learning long sequences of observations.
+It seems a perfect match for time series forecasting, and in fact, it may be.
+
+We followed the blog by Richard Wanjohi [6] to understand how to implement times series forecasting using LSTM in R.
+
+
+```{r LSTM}
+visits <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
+
+```
+
+
+```{r library for LSTM}
+# Modeling
+library(keras)
+library(tensorflow)
+install_tensorflow(version = "1.12")
+```
+
+```{r data cleaning for LSTM}
+# Modeling
+visits_ili <- visits[,.(ili_percent= (ILITOTAL*100/TOTAL.PATIENTS))]
+visits_with_ilipercent <- cbind(visits,visits_ili)
+
+
+
+visits_for_ts <- visits_removing53rdweek[,c(2,3,15)]
+ili <- visits_for_ts[,c(3)]
+visits_removing53rdweek <- visits_with_ilipercent[WEEK >=1 & WEEK <=52,]
+
+
+ts.ili.percent <- ts(ili, start=c(2010, 40), end=c(2019, 12), frequency=52)
+
+# Lagged dataset
+diffed = diff(ts.ili.percent, differences = 1)
+
+lag_transform <- function(x, k= 1){
+  
+  lagged =  c(rep(NA, k), x[1:(length(x)-k)])
+  DF = as.data.frame(cbind(lagged, x))
+  colnames(DF) <- c( paste0('x-', k), 'x')
+  DF[is.na(DF)] <- 0
+  return(DF)
+}
+supervised = lag_transform(diffed, 1)
+head(supervised)
+
+
+# creating train and validation set
+
+train = supervised[117:377, ] # Year 2013- 2017
+test  = supervised[378:440,  ] # Year 2018-2019
+n= nrow(train)
+## scale data
+scale_data = function(train, test, feature_range = c(0, 1)) {
+  x = train
+  fr_min = feature_range[1]
+  fr_max = feature_range[2]
+  std_train = ((x - min(x) ) / (max(x) - min(x)  ))
+  std_test  = ((test - min(x) ) / (max(x) - min(x)  ))
+  
+  scaled_train = std_train *(fr_max -fr_min) + fr_min
+  scaled_test = std_test *(fr_max -fr_min) + fr_min
+  
+  return( list(scaled_train = as.vector(scaled_train), scaled_test = as.vector(scaled_test) ,scaler= c(min =min(x), max = max(x))) )
+  
+}
+
+
+Scaled = scale_data(train, test, c(-1, 1))
+
+y_train = Scaled$scaled_train[, 2]
+x_train = Scaled$scaled_train[, 1]
+
+y_test = Scaled$scaled_test[, 2]
+x_test = Scaled$scaled_test[, 1]
+
+## inverse-transform
+invert_scaling = function(scaled, scaler, feature_range = c(0, 1)){
+  min = scaler[1]
+  max = scaler[2]
+  t = length(scaled)
+  mins = feature_range[1]
+  maxs = feature_range[2]
+  inverted_dfs = numeric(t)
+  
+  for( i in 1:t){
+    X = (scaled[i]- mins)/(maxs - mins)
+    rawValues = X *(max - min) + min
+    inverted_dfs[i] <- rawValues
+  }
+  return(inverted_dfs)
+}
+
+# Reshape the input to 3-dim
+dim(x_train) <- c(length(x_train), 1, 1)
+
+# specify required arguments
+X_shape2 = dim(x_train)[2]
+X_shape3 = dim(x_train)[3]
+batch_size = 1                # must be a common factor of both the train and test samples
+units = 1                     # can adjust this, in model tuninig phase
+
+
+```
+
+```{r data modelling for LSTM}
+
+
+#=========================================================================================
+
+model <- keras_model_sequential() 
+model%>%
+  layer_lstm(units, batch_input_shape = c(batch_size, X_shape2, X_shape3), stateful= TRUE)%>%
+  layer_dense(units = 1)
+
+
+## Compile the model
+model %>% compile(
+  loss = 'mean_squared_error',
+  optimizer = optimizer_adam( lr= 0.02, decay = 1e-6 ),  
+  metrics = c('accuracy')
+)
+
+## Fit the model
+Epochs = 50   
+for(i in 1:Epochs ){
+  model %>% fit(x_train, y_train, epochs=1, batch_size=batch_size, verbose=1, shuffle=FALSE)
+  model %>% reset_states()
+}
+```
+
+
+```{r warning=FALSE,echo=FALSE}
+## Make predictions
+L = length(x_test)
+scaler = Scaled$scaler
+lstm.predictions = numeric(L)
+
+for(i in 1:L){
+     X = x_test[i]
+     dim(X) = c(1,1,1)
+     yhat = model %>% predict(X, batch_size=batch_size)
+     # invert scaling
+     yhat = invert_scaling(yhat, scaler,  c(-1, 1))
+     # invert differencing
+     yhat  = yhat + ts.ili.percent[(n+i)]
+     # store
+     lstm.predictions[i] <- yhat
+}
+```
+
+
+```{r warning=FALSE,echo=FALSE}
+## MSE
+ili.percent <- visits[,.(percent = ILITOTAL/TOTAL.PATIENTS)]
+actual <- ili.percent[c(379:441),]
+MSE <- (sqrt(mean((lstm.predictions - actual$percent)^2)))
+MSE
+```
+
+# Results and Interpretation
+
+## Forecasting with ARIMA models 
+
+### Forecasting the national ILI visits trend for all age groups
+
+Using the SARIMA$(3,0,0)\times(1,1,1)$ model, we can make forecasts for the incoming flu season. The first thing we want to forecast is the ILI visits trend starting from the 13th week (March) of 2019. 
+
+```{r echo=FALSE, fig.height=3}
+series <- visits.national[, X..WEIGHTED.ILI]
+pred.list <- forecast(models[[2]], h = 52) #point forecasts and CIs
+predictions <- pred.list$mean
+
+orig <- data.table(week = 1:(52*4),
+                   data = series[-1:(-(length(series)-52*4))])
+pred <- data.table(week = (52*4+1):(52*4+length(predictions)),
+                       data = c(predictions))
+
+ggplot(data = orig, aes(x=week, y=data))+
+  geom_line(size = 1, col = "dodgerblue")+
+  geom_smooth(data = pred, aes(x=week, y=data, ymax=pred.list$upper[,2],
+                               ymin=pred.list$lower[,2]),
+              col = "LightCoral", size = 1, stat="identity")+
+  geom_vline(xintercept = 52*4, linetype=4, col="brown")+
+  geom_text(data = data.frame(week = 52*4, 
+                              event = "March 2019(12th week)"),
+            aes(x = week, y=0, label = event),
+            size = 4, col = "Black", angle = 0, vjust=1.3, hjust=.5)+
+  labs(title = "Forecasts for National ILI Visits Rates (%)")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+The above result indicates our forecast follows the general trend. We tend to see the rate of hospital visits increase for the first few weeks in spring, 2019, and then the number drops and reaches the lowest during summer. Finally, the number increases again as it approaches winter. Also note our prediction for the peak is lower than the highest number of flu cases for winter, 2018. We hope this is actually true because according to the CDC officials, the 2018 flu season was the worst since the 2009 swine flu, and we definitely don’t want to see a huge outbreak again this year. This result verifies what we’ve discovered in our preliminary analysis, which is there’s usually a peak for the rate of flu visits, and the number typically increase during winter and spring. 
+
+### Forecasting the ILI visits trend for all age groups in New York State
+
+```{r echo=FALSE, warning=FALSE}
+train <- list()
+models <- list()
+aicc <- c()
+for(i in 1:3){
+  train[[i]] <- ts(visits.state[REGION=="New York"&YEAR%in%train.time[[i]],
+                                as.numeric(`%UNWEIGHTED ILI`)], frequency=52)
+  models[[i]] <- auto.arima(train[[i]])
+  aicc[i] <- round(models[[i]]$aicc, 3)
+}
+
+validation <- visits.state[YEAR%in%2018:2019&REGION=="New York", 
+                           as.numeric(`%UNWEIGHTED ILI`)] # validation set
+n.ahead <- length(validation) # lags to predict
+mse <- c()
+for(i in 1:3){mse <- c(mse, 
+                       round(sum((forecast(models[[i]], h=n.ahead)$mean-
+                                    validation)^2),3))}
+
+datatable(data.table(
+  train.set = c("2010-2017", "2013-2017", "2015-2017"),
+  aicc = aicc, mse = mse, 
+  aicc_mse = round(0.3*(aicc-mean(aicc))+0.7*(mse-mean(mse)),3)))
+# models[[3]] best
+```
+
+The best training set is 2015-2017 data and the model with AICc 247.807. The forecasts are made based on this model.
+
+```{r echo=FALSE, fig.height=3}
+series <- visits.state[REGION=="New York", as.numeric(`%UNWEIGHTED ILI`)]
+pred.list <- forecast(models[[3]], h = 52) #point forecasts and CIs
+predictions <- pred.list$mean
+
+orig <- data.table(week = 1:(52*4),
+                   data = series[-1:(-(length(series)-52*4))])
+pred <- data.table(week = (52*4+1):(52*4+length(predictions)),
+                       data = c(predictions))
+
+ggplot(data = orig, aes(x=week, y=data))+
+  geom_line(size = 1, col = "dodgerblue")+
+  geom_smooth(data = pred, aes(x=week, y=data, ymax=pred.list$upper[,2],
+                               ymin=pred.list$lower[,2]),
+              col = "LightCoral", size = 1, stat="identity")+
+  geom_vline(xintercept = 52*4, linetype=4, col="brown")+
+  geom_text(data = data.frame(week = 52*4, 
+                              event = "March 2019(12th week)"),
+            aes(x = week, y=0, label = event),
+            size = 4, col = "Black", angle = 0, vjust=1.3, hjust=.5)+
+  labs(title = "ILI Visit Rates Forecasts for all Age Groups in New York State (%)")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+We then would like to explore how flu cases were distributed across the United States. Since the spread of any virus depends on proximity, how the outbreak is distributed geographically is also important in identifying any future trends of the flu. Here, we decide to take a closer look at the rate of flu visits in New York State. It’s interesting to notice that even though the total number of national flu cases reached the highest during winter, 2018, we don’t tend to see a outbreak in NY at that time. The rate of flu cases is around 5%, which is actually lower than some of its previous peak numbers. However, as our model indicates, the outbreak might happen in spring, 2019. Therefore, residents in New York State should take extra precautions in preventing the flu in the coming flu season. 
+
+
+### Forecasting the national ILI deaths trend for all age groups
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+deaths <- deaths[`AGE GROUP`=="All",]
+setorderv(deaths, cols = "YEAR")
+#deaths
+train <- list()
+models <- list()
+aicc <- c()
+for(i in 1:3){
+  train[[i]] = ts(log(deaths[YEAR%in%train.time[[i]],
+                         as.numeric(gsub(",","",`NUM INFLUENZA DEATHS`))+1]),
+                  frequency = 52)
+  models[[i]] = auto.arima(train[[i]])
+  aicc[i] = round(models[[i]]$aicc,3)
+}
+
+validation <- log(deaths[YEAR %in% 2018:2019,
+                         as.numeric(gsub(",","",`NUM INFLUENZA DEATHS`))]) # validation set
+n.ahead <- length(validation) # lags to predict
+mse <- c()
+for(i in 1:3){mse <- c(mse, 
+                       round(sum((forecast(models[[i]], h=n.ahead)$mean-validation)^2),3))}
+
+datatable(data.table(
+  train.set = c("2010-2017", "2013-2017", "2015-2017"),
+  aicc = aicc, mse = mse, 
+  aicc_mse = round(0.3*(aicc-mean(aicc))+0.7*(mse-mean(mse)),3)))
+#models[[2]] best
+```
+
+The best training set for mortality is data in 2013-2017 and the model with AICc 217.843. The following forecasts are made based on this model.
+
+```{r echo=FALSE, fig.height=3}
+series <- deaths[`AGE GROUP`=="All",
+                 as.numeric(gsub(",","",`NUM INFLUENZA DEATHS`))]
+pred.list <- forecast(models[[2]], h = 52) #point forecasts and CIs
+predictions <- exp(pred.list$mean)-1
+
+orig <- data.table(week = 1:length(series), data = series)
+pred <- data.table(week = (length(series)+1):(length(series)+length(predictions)),
+                       data = predictions)
+
+ggplot(data = orig, aes(x=week, y=data))+
+  geom_line(size = 1, col = "dodgerblue")+
+  geom_smooth(data = pred, aes(x=week, y=data, ymax=exp(pred.list$upper[,2])-1,
+                               ymin=exp(pred.list$lower[,2])-1),
+              col = "LightCoral", size = 1, stat="identity")+
+  geom_vline(xintercept = length(series), linetype=4, col="brown")+
+  geom_text(data = data.frame(week = length(series), 
+                              event = "March 2019(12th week)"),
+            aes(x = week, y=0, label = event),
+            size = 4, col = "Black", angle = 0, vjust=-17, hjust=.5)+
+  labs(title = "Influenza Past Deaths and Forecasts")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Flus could be deadly, so it’s also important to discover the general trend for the national ILI deaths data for all age groups. The above figure shows data for the previous national ILI deaths, and the model’s forecasts for March, 2019 and beyond. The predictions indicate a sudden increase for the number of deaths in spring, 2019, which will reach around 1000 people, but we notice the confidence band is pretty wide. Also, the number will decrease during summer, and rise again in winter, 2019. In general, the pattern is similar compared with the trend for the rate of ILI visits. By analyzing the past we can only hope to learn for the future. Now that we know the general trend of a flu outbreak, we as a nation can take the necessary precautions to do our best to not repeat the past.
+
+## Results for the LSTM Models
+
+## Forecasting with LSTM model
+
+### Forecasting the national ILI visits trend for all age groups
+
+
+
+```{r echo=FALSE, fig.height=3}
+series <- visits.national[, X..WEIGHTED.ILI]
+predictions <- lstm.predictions
+
+orig <- data.table(week = 1:(52*4),
+                   data = series[-1:(-(length(series)-52*4))])
+pred <- data.table(week = (52*4+1):(52*4+length(predictions)),
+                       data = c(predictions))
+
+ggplot(data = orig, aes(x=week, y=data))+
+  geom_line(size = 1, col = "dodgerblue")+
+  geom_smooth(data = pred, aes(x=week, y=data, ymax=max(lstm.predictions),
+                               ymin=min(lstm.predictions)),
+              col = "LightCoral", size = 1, stat="identity")+
+  geom_vline(xintercept = 52*4, linetype=4, col="brown")+
+  geom_text(data = data.frame(week = 52*4, 
+                              event = "March 2019(12th week)"),
+            aes(x = week, y=0, label = event),
+            size = 4, col = "Black", angle = 0, vjust=1.3, hjust=.5)+
+  labs(title = "Forecasts for National ILI Visits Rates (%)")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+# Assumptions
+
+Not all our models are built based on a solid and comprehensive basis. Taking everything into account will be enormously time-consuming. To simplify our model construction while fitting a model as reliably as possible, we have to make several assumptions. 
+
+The first assumption is that our time series datasets are stationary after transformation, including taking logarithm and differencing. Since ARMA models are for stationary time series, it won’t fit properly to non-stationary process. Most of our data are non-stationary before differencing: we can see obvious mean and variance changes over time. We took differencing and logarithm of the data to make it as stationary as possible and then use the unit-root test to check whether the series is stationary after our transformation. Our following modeling procedures are all based on the assumption that we reject the null hypothesis that models are non-stationary.  
+
+The second assumption is that all the time series follow a fixed seasonality, which is 52 weeks. We make this assumption because the flu break-out patterns are similar between different years, and each year contains 52 weeks. The actual seasonality may vary a bit. However, the small variance in seasonality won’t affect the whole modeling procedure too much, and from the model results we can see that our forecasts generally make sense.  
+
+# Limitations and Uncertainties
+
+1. Limited forecasting techniques available:
+The main limitation that we felt while analysing the data was, because our data follows a time series, we could not apply a lot of robust machine learning techniques. We did try using LSTM techniques and although, it gave a good MSE score, it was computationally ineffecient. 
+
+2. Random Walks and the Non independence of Observations:
+The central point that differentiates time-series problems from most other statistical problems is that in a time series, observations are not mutually independent. Rather a single chance event may affect all later data points. This makes time-series analysis quite different from most other areas of statistics. Because of this non independence, the true patterns underlying time-series data can be extremely difficult to see by visual inspection.
+
+Apart from the limitations, there are uncertainties about our selection of training set and scoring mechanism for the models. As mentioned in the “Investigation” section, we divide our model into training set (2010-2017/ 2013-2017/ 2015-2017) and validation set, while in fact there are many ways of selecting the training set. For example, 2012-2017 instead of 2013-2017. We simply assumed that since the data of 2012 is relatively old  now, so it will not pose large impact to current state (2018-2019), so we can roughly make breakpoints at around 2012 and 2013. As for the scoring, we want to score our model and training set size according to weighted scaled AICc and MSE. The weights we assigned to AICc is 30% and MSE is 70%, while we can actually use other weights like 0.4 AICc + 0.6MSE, or 0.7AICc + 0.3MSE. We just made assumptions that while AICc is a penalization for overfitting, lower MSE can be more important when reflecting a model’s performance, because we want our forecasts to be as closed to the true value as possible.  
+
+# Areas of Future Investigation
+
+Although, CDC is a trusted department in the United States and offers reliable tool for data analysis, it is still slow and expensive. The approach employed by CDC includes collecting influenza-like illness (ILI) activity data from medical practices. Typically, there is a 1-2 week delay between the time a patient is diagnosed and the moment that data point becomes available in aggregate ILI reports. We need to find a tool that can help track ILI in real time. Since we live in the data era, data from social network sites such as Twitter, Google trends etc. can provide real time data analysis and can be used to get early warnings about the spread of flu. 
+
+Based on the data collected during 2009 and 2010, we find that the volume of flu related tweets is highly correlated with the number of ILI cases reported by CDC [7]. In fact, a team from Northeastern university was able to predict flu outbreaks 6 weeks in advance using  Twitter [8]. 
+
+In light of all of the above, it will be an exciting proposition to incorporate Twitter data along with traditional CDC data in predicting flu trends.
+
+# References
+
+[1] Centers for Disease Control and Prevention. (n.d.). Disease Burden of Influenza. Retrieved from cdc.gov: https://www.cdc.gov/flu/about/burden/index.html
+
+[2] Centers for Disease Control and Prevention. (n.d.). FLU VIEW. Retrieved from gis.cdc.gov: https://gis.cdc.gov/grasp/fluview/fluportaldashboard.html
+
+[3] Centers for Disease Control and Prevention. (n.d.). 2010-11 through 2017-18 Influenza Seasons Vaccination Coverage Trend Report. Retrieved from cdc.gov: https://www.cdc.gov/flu/fluvaxview/reportshtml/trends/index.html
+
+[4] Centers for Disease Control and Prevention. (n.d.). Flu View: Pneumonia and Influenza Mortality Surveillance from the National Center for Health Statistics Mortality Surveillance System. Retrieved from gis.cdc.gov: https://gis.cdc.gov/grasp/fluview/mortality.html
+
+[5] Centers for Disease Control and Prevention. (n.d.). Age Group Distribution of Influenza Positive Specimens Reported by Public Health Laboratories, National Summary. Retrieved from gis.cdc.gov: https://gis.cdc.gov/grasp/fluview/flu_by_age_virus.html
+
+[6]Wanjohi, R. (2018, April 5). Time Series Forecasting using LSTM in R. Retrieved from rwanjohi.rbind.io: http://rwanjohi.rbind.io/2018/04/05/time-series-forecasting-using-lstm-in-r/
+
+[7]Harshavardhan Achrekar, A. G.-H. (2011). Predicting Flu Trends using Twitter data. Shanghai: IEEE.
+
+[8]Yurieff, K. (2017, May 11). How Twitter can predict flu outbreaks 6 weeks in advance. Retrieved from CNNBusiness: https://money.cnn.com/2017/05/11/technology/tracking-flu-twitter/index.html
+
+
