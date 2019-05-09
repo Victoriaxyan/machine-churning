@@ -364,6 +364,186 @@ It seems a perfect match for time series forecasting, and in fact, it may be.
 We followed the blog by Richard Wanjohi [6] to understand how to implement times series forecasting using LSTM in R.
 
 
+```{r LSTM}
+visits <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
+
+```
+
+
+```{r data cleaning for LSTM}
+# Modeling
+library(keras)
+library(tensorflow)
+install_tensorflow(version = "1.12")
+```
+
+```{r data cleaning for LSTM}
+# Modeling
+visits_ili <- visits[,.(ili_percent= (ILITOTAL*100/TOTAL.PATIENTS))]
+visits_with_ilipercent <- cbind(visits,visits_ili)
+
+
+
+visits_for_ts <- visits_removing53rdweek[,c(2,3,15)]
+ili <- visits_for_ts[,c(3)]
+visits_removing53rdweek <- visits_with_ilipercent[WEEK >=1 & WEEK <=52,]
+
+
+ts.ili.percent <- ts(ili, start=c(2010, 40), end=c(2019, 12), frequency=52)
+
+# Lagged dataset
+diffed = diff(ts.ili.percent, differences = 1)
+
+lag_transform <- function(x, k= 1){
+  
+  lagged =  c(rep(NA, k), x[1:(length(x)-k)])
+  DF = as.data.frame(cbind(lagged, x))
+  colnames(DF) <- c( paste0('x-', k), 'x')
+  DF[is.na(DF)] <- 0
+  return(DF)
+}
+supervised = lag_transform(diffed, 1)
+head(supervised)
+
+
+# creating train and validation set
+
+train = supervised[117:377, ] # Year 2013- 2017
+test  = supervised[378:440,  ] # Year 2018-2019
+n= nrow(train)
+## scale data
+scale_data = function(train, test, feature_range = c(0, 1)) {
+  x = train
+  fr_min = feature_range[1]
+  fr_max = feature_range[2]
+  std_train = ((x - min(x) ) / (max(x) - min(x)  ))
+  std_test  = ((test - min(x) ) / (max(x) - min(x)  ))
+  
+  scaled_train = std_train *(fr_max -fr_min) + fr_min
+  scaled_test = std_test *(fr_max -fr_min) + fr_min
+  
+  return( list(scaled_train = as.vector(scaled_train), scaled_test = as.vector(scaled_test) ,scaler= c(min =min(x), max = max(x))) )
+  
+}
+
+
+Scaled = scale_data(train, test, c(-1, 1))
+
+y_train = Scaled$scaled_train[, 2]
+x_train = Scaled$scaled_train[, 1]
+
+y_test = Scaled$scaled_test[, 2]
+x_test = Scaled$scaled_test[, 1]
+
+## inverse-transform
+invert_scaling = function(scaled, scaler, feature_range = c(0, 1)){
+  min = scaler[1]
+  max = scaler[2]
+  t = length(scaled)
+  mins = feature_range[1]
+  maxs = feature_range[2]
+  inverted_dfs = numeric(t)
+  
+  for( i in 1:t){
+    X = (scaled[i]- mins)/(maxs - mins)
+    rawValues = X *(max - min) + min
+    inverted_dfs[i] <- rawValues
+  }
+  return(inverted_dfs)
+}
+
+# Reshape the input to 3-dim
+dim(x_train) <- c(length(x_train), 1, 1)
+
+# specify required arguments
+X_shape2 = dim(x_train)[2]
+X_shape3 = dim(x_train)[3]
+batch_size = 1                # must be a common factor of both the train and test samples
+units = 1                     # can adjust this, in model tuninig phase
+
+
+```
+
+```{r data modelling for LSTM}
+
+
+#=========================================================================================
+
+model <- keras_model_sequential() 
+model%>%
+  layer_lstm(units, batch_input_shape = c(batch_size, X_shape2, X_shape3), stateful= TRUE)%>%
+  layer_dense(units = 1)
+
+
+## Compile the model
+model %>% compile(
+  loss = 'mean_squared_error',
+  optimizer = optimizer_adam( lr= 0.02, decay = 1e-6 ),  
+  metrics = c('accuracy')
+)
+
+## Fit the model
+Epochs = 50   
+for(i in 1:Epochs ){
+  model %>% fit(x_train, y_train, epochs=1, batch_size=batch_size, verbose=1, shuffle=FALSE)
+  model %>% reset_states()
+}
+```
+
+
+```{r warning=FALSE,echo=FALSE}
+## Make predictions
+L = length(x_test)
+scaler = Scaled$scaler
+predictions = numeric(L)
+
+for(i in 1:L){
+     X = x_test[i]
+     dim(X) = c(1,1,1)
+     yhat = model %>% predict(X, batch_size=batch_size)
+     # invert scaling
+     yhat = invert_scaling(yhat, scaler,  c(-1, 1))
+     # invert differencing
+     yhat  = yhat + ts.ili.percent[(n+i)]
+     # store
+     predictions[i] <- yhat
+}
+```
+
+
+```{r warning=FALSE,echo=FALSE}
+## MSE
+ili.percent <- visits[,.(percent = ILITOTAL/TOTAL.PATIENTS)]
+actual <- ili.percent[c(379:441),]
+MSE <- (sqrt(mean((predictions - actual$percent)^2)))
+MSE
+```
+
+
+
+```{r echo=FALSE, fig.height=3}
+series <- visits.national[1:378, X..WEIGHTED.ILI]
+
+
+orig <- data.table(week = 1:378,
+                   data = series)
+pred <- data.table(week = 379:441,
+                       data = c(predictions))
+
+ggplot(data = orig, aes(x=week, y=data))+
+  geom_line(size = 1, col = "dodgerblue")+
+  geom_smooth(data = pred, aes(x=week, y=data, ymax=max(predictions),
+                               ymin=min(predictions)),
+              col = "LightCoral", size = 1, stat="identity")+
+  geom_vline(xintercept = 52*4, linetype=4, col="brown")+
+  geom_text(data = data.frame(week = 52*4, 
+                              event = "March 2019(12th week)"),
+            aes(x = week, y=0, label = event),
+            size = 4, col = "Black", angle = 0, vjust=1.3, hjust=.5)+
+  labs(title = "Forecasts for National ILI Visits Rates (%)")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
 
 # Results and Interpretation
 
@@ -452,6 +632,7 @@ ggplot(data = orig, aes(x=week, y=data))+
   labs(title = "ILI Visit Rates Forecasts for all Age Groups in New York State (%)")+
   theme(plot.title = element_text(hjust = 0.5))
 ```
+
 We then would like to explore how flu cases were distributed across the United States. Since the spread of any virus depends on proximity, how the outbreak is distributed geographically is also important in identifying any future trends of the flu. Here, we decide to take a closer look at the rate of flu visits in New York State. It’s interesting to notice that even though the total number of national flu cases reached the highest during winter, 2018, we don’t tend to see a outbreak in NY at that time. The rate of flu cases is around 5%, which is actually lower than some of its previous peak numbers. However, as our model indicates, the outbreak might happen in spring, 2019. Therefore, residents in New York State should take extra precautions in preventing the flu in the coming flu season. 
 
 
@@ -528,13 +709,21 @@ The second assumption is that all the time series follow a fixed seasonality, wh
 
 # Limitations and Uncertainties
 
-Data: not random, underreporting, patterns may change over time, size too small
-Difficult to make time series predictions, especially on flu incidence. May not be able to predict any flu outbreak in the future (Copied from our presentation slides, Saloni can make changes)
+1. Limited forecasting techniques available:
+The main limitation that we felt while analysing the data was, because our data follows a time series, we could not apply a lot of robust machine learning techniques. We did try using LSTM techniques and although, it gave a good MSE score, it was computationally ineffecient. 
 
-Apart from the limitations, there are uncertainties about our selection of training set and scoring mechanism for the models. As mentioned in the “Investigation” section, we divide our model into training set (2010-2017/ 2013-2017/ 2015-2017) and validation set, while in fact there are many ways of selecting the training set. For example, 2012-2017 instead of 2013-2017. We simply assumed that since the data of 2012 is relatively old to now, so it will not pose large impact to current state (2018-2019), so we can roughly make breakpoints at around 2012 and 2013. As for the scoring, we want to score our model and training set size according to weighted scaled AICc and MSE. The weights we assigned to AICc is 30% and MSE is 70%, while we can actually use other weights like 0.4 AICc + 0.6MSE, or 0.7AICc + 0.3MSE. We just made assumptions that while AICc is a penalization for overfitting, lower MSE can be more important when reflecting a model’s performance, because we want our forecasts to be as closed to the true value as possible.  
+2. Random Walks and the Non independence of Observations:
+The central point that differentiates time-series problems from most other statistical problems is that in a time series, observations are not mutually independent. Rather a single chance event may affect all later data points. This makes time-series analysis quite different from most other areas of statistics. Because of this non independence, the true patterns underlying time-series data can be extremely difficult to see by visual inspection.
+
+Apart from the limitations, there are uncertainties about our selection of training set and scoring mechanism for the models. As mentioned in the “Investigation” section, we divide our model into training set (2010-2017/ 2013-2017/ 2015-2017) and validation set, while in fact there are many ways of selecting the training set. For example, 2012-2017 instead of 2013-2017. We simply assumed that since the data of 2012 is relatively old  now, so it will not pose large impact to current state (2018-2019), so we can roughly make breakpoints at around 2012 and 2013. As for the scoring, we want to score our model and training set size according to weighted scaled AICc and MSE. The weights we assigned to AICc is 30% and MSE is 70%, while we can actually use other weights like 0.4 AICc + 0.6MSE, or 0.7AICc + 0.3MSE. We just made assumptions that while AICc is a penalization for overfitting, lower MSE can be more important when reflecting a model’s performance, because we want our forecasts to be as closed to the true value as possible.  
 
 # Areas of Future Investigation
 
+Although, CDC is a trusted department in the United States and offers reliable tool for data analysis, it is still slow and expensive. The approach employed by CDC includes collecting influenza-like illness (ILI) activity data from medical practices. Typically, there is a 1-2 week delay between the time a patient is diagnosed and the moment that data point becomes available in aggregate ILI reports. We need to find a tool that can help track ILI in real time. Since we live in the data era, data from social network sites such as Twitter, Google trends etc. can provide real time data analysis and can be used to get early warnings about the spread of flu. 
+
+Based on the data collected during 2009 and 2010, we find that the volume of flu related tweets is highly correlated with the number of ILI cases reported by CDC [7]. In fact, a team from Northeastern university was able to predict flu outbreaks 6 weeks in advance using  Twitter [8]. 
+
+In light of all of the above, it will be an exciting proposition to incorporate Twitter data along with traditional CDC data in predicting flu trends.
 
 # References
 
@@ -548,21 +737,10 @@ Apart from the limitations, there are uncertainties about our selection of train
 
 [5] Centers for Disease Control and Prevention. (n.d.). Age Group Distribution of Influenza Positive Specimens Reported by Public Health Laboratories, National Summary. Retrieved from gis.cdc.gov: https://gis.cdc.gov/grasp/fluview/flu_by_age_virus.html
 
+[6]Wanjohi, R. (2018, April 5). Time Series Forecasting using LSTM in R. Retrieved from rwanjohi.rbind.io: http://rwanjohi.rbind.io/2018/04/05/time-series-forecasting-using-lstm-in-r/
 
+[7]Harshavardhan Achrekar, A. G.-H. (2011). Predicting Flu Trends using Twitter data. Shanghai: IEEE.
 
-
-
-
-CDC’s Flu Portal Dashboard
-https://gis.cdc.gov/grasp/fluview/fluportaldashboard.html (Links to an external site.)Links to an external site.
-CDC’s Flu vaccine data
-https://www.cdc.gov/flu/fluvaxview/reportshtml/trends/index.html (Links to an external site.)
-CDC’s flu mortality
-https://gis.cdc.gov/grasp/fluview/mortality.html
-Background research
-https://www.nytimes.com/2018/10/01/health/flu-deaths-vaccine.html
-https://www.cdc.gov/mmwr/volumes/67/wr/mm6706a2.htm
-
-
+[8]Yurieff, K. (2017, May 11). How Twitter can predict flu outbreaks 6 weeks in advance. Retrieved from CNNBusiness: https://money.cnn.com/2017/05/11/technology/tracking-flu-twitter/index.html
 
 
