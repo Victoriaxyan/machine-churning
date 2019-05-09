@@ -41,6 +41,54 @@ National.Seasonal.AgebyVirus <- fread(input = "https://raw.githubusercontent.com
 National.Weekly.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewByWeek.csv")
 ```
 
+
+```{r constants, echo=FALSE, message=FALSE}
+Years <- c(2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019)
+Ages <- c("0-4 yr","5-24 yr","25-64 yr","65+ yr")
+Regional.Cut <- c("National", "HHS Regions", "State", "Census")
+Seasons <- c("2010-11", "2012-13", "2013-14", "2014-15","2015-16", "2016-17", "2017-18", "2018-19")
+Virus <- c("A (Unable to Subtype)","A (H1)","A (H3)","A (H1N1)pdm09","A (Subtyping not Performed)","B (Victoria Lineage)","B (Yamagata Lineage)","B (Lineage Unspecified)","H3N2v")
+
+```
+
+
+```{r functions, echo=FALSE, message=FALSE}
+
+percentage.table <- function(x, digits = 1){
+  tab <- table(x)
+  percentage.tab <- 100*tab/(sum(tab))
+  rounded.tab <- round(x = percentage.tab, digits = digits)
+  return(rounded.tab)                           
+}
+
+
+Add.Season.Column <- function(dat){
+  i <- 2010
+  for(i in Years){
+  dat[(Year==i & Week >=40) | (Year==i+1 & Week <=39),season := paste0(i,"-",substring(as.character(i+1),3))]
+  i <- i+1
+  }
+  return(dat)
+}
+
+count.table <- function(start,end){
+tab <- visits[YEAR>=start & YEAR <= end,.(tot=sum(ILITOTAL)),keyby = YEAR]
+return(tab)
+}
+
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+mean.diff <- function(x, y){
+  return(mean(x, na.rm=TRUE) - mean(y, na.rm=TRUE))
+}
+
+
+```
+
 # Introduction
 
 Reducing the impact of seasonal influenza epidemics is of supreme importance for public health authorities. The Centers for Disease Control and Prevention (CDC) estimates that the flu has caused between 9.3 million to 49.0 million illnesses and between 12,000 – 79,000 deaths since 2010. While the flu places a substantial burden on the health of people each year, as we can see from those wide range of estimates, its level of impact can be difficult to forecast.
@@ -56,9 +104,10 @@ We also include CDC’s flu vaccination data, which provides information on the 
 We believe all the information we have is reliable and representative of the population we are studying because it comes from CDC, which is the leading national public health institute. Therefore, our data should be accurate and will offer us a precise view of what was going on during previous flu seasons.   
 
 # Examination of the Data
-As mentioned above, we have data on flu visits, flu tests, levels of flu vaccination, and flu mortality from the C.D.C. These were separate datasets that we downloaded from the C.D.C website. We will discuss some of the challenges with working with this data in order. First off, let us look at flu visits data:
 
-```{r exam_i}
+As mentioned above, we have data on flu visits, flu tests, levels of flu vaccination, flu mortality, and flu viruses from the CDC. These were separate datasets that we downloaded from the CDC website. We will discuss some of the challenges with working with this data in order. First off, let us look at flu visits data:
+
+```{r flu exam_i}
 doc_i_have_the_flu <- fread("https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/flu_view_line(Topright%20%20Chart)_national.csv")
 doc_i_have_the_flu.cleaned <- doc_i_have_the_flu[,c(2,3,4,5,6,8,9,10,11,12)]
 head(doc_i_have_the_flu.cleaned,5)
@@ -93,7 +142,43 @@ mort <- mort[,c(1,2,3,4,5,8,9,10)]
 head(mort,5)
 ```
 
-Finally we have mortality data - in other words, the amount of people who die due to the flu. First off, the C.D.C has many cautionary warnings about this data, that is is difficult to isolate the flu as the cause of a death due to the prevalence of other complicating health factors, the unreliability of 'cause of death' listings on death certificates, and a likely underreporting due to patients who are often not tested for seasonal influenza. Even so, the dataset is still solid - it has C.D.C estimates of the number of influenza and pneumonia deaths as well as total deaths for each week from 2010 to 2019, so it is still possible to generate reliable forecasting estimates from the data. The issue is an external one about the true validity of the mortality estimates.
+Looking at the mortality data - in other words, the amount of people who die due to the flu. First off, the CDC has many cautionary warnings about this data, that it is difficult to isolate the flu as the cause of a death due to the prevalence of other complicating health factors, the unreliability of 'cause of death' listings on death certificates, and a likely underreporting due to patients who are often not tested for seasonal influenza. Even so, the dataset is still solid - it has CDC estimates of the number of influenza and pneumonia deaths as well as total deaths for each week from 2010 to 2019, so it is still possible to generate reliable forecasting estimates from the data. The issue is an external one about the true validity of the mortality estimates.
+
+```{r exam_vi}
+# National Virus by Age
+National.Seasonal.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewBySeason.csv")
+National.Weekly.AgebyVirus <- fread(input = "https://raw.githubusercontent.com/Victoriaxyan/machine-churning/master/Data/AgeViewByWeek.csv")
+head(National.Seasonal.AgebyVirus,5)
+head(National.Weekly.AgebyVirus,5)
+```
+
+Finally, the national virus data shows how different viruses affected different age groups. For the purpose of visualisation, we will convert this dataset into long format.
+
+
+```{r Season, , echo=FALSE, warning=FALSE}
+
+
+National.Weekly.AgebyVirus <- Add.Season.Column(National.Weekly.AgebyVirus)
+
+```
+
+```{r Reshape}
+
+National.Weekly.AgebyVirus.long <- melt(National.Weekly.AgebyVirus, 
+                                        id.vars = c("Year", "Week", "Age Group","season"),
+                                        measure.vars = Virus)
+
+National.Seasonal.AgebyVirus.long <- melt(National.Seasonal.AgebyVirus, 
+                                        id.vars = c("Season", "Age Group"),
+                                        measure.vars = Virus)
+
+names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'variable'] <- 'Virus'
+names(National.Weekly.AgebyVirus.long)[names(National.Weekly.AgebyVirus.long) == 'value'] <- 'Positive Specimens Reported'
+
+
+names(National.Seasonal.AgebyVirus.long)[names(National.Seasonal.AgebyVirus.long) == 'variable'] <- 'Virus'
+names(National.Seasonal.AgebyVirus.long)[names(National.Seasonal.AgebyVirus.long) == 'value'] <- 'Positive Specimens Reported'
+```
 
 # Investigation
 
@@ -103,9 +188,10 @@ Finally we have mortality data - in other words, the amount of people who die du
 
 First, we want to start by exploring how flu cases were distributed across time. In order to get a general idea about what was happening, let’s take a look at the percentage of flu cases over the past 10 years. Clearly, we can notice some seasonal effects, and the numbers of flu cases usually increase during winter and spring, which actually makes sense. In addition, we tend to see a peak in flu cases each year.   
 
-However, if we focus on 2018, the highest percentage almost reaches 8% in February, 2018, while for other years, usually the highest percentages are around 4-6%. According to the federal health officials, more than 80,000 Americans died because of flu in the winter of 2017-2018, which marked the highest number in over a decade. One reason for this outbreak was probably due to the poor performance of 2018’s flu vaccine against most of the common strains. Estimates released by C.D.C show the 2018’s vaccine was only 36% effective against influenza A and B, and only 25% effective against the most common strain, H3N2.  
+However, if we focus on 2018, the highest percentage almost reaches 8% in February, 2018, while for other years, usually the highest percentages are around 4-6%. According to the federal health officials, more than 80,000 Americans died because of flu in the winter of 2017-2018, which marked the highest number in over a decade. One reason for this outbreak was probably due to the poor performance of 2018’s flu vaccine against most of the common strains. Estimates released by CDC show the 2018’s vaccine was only 36% effective against influenza A and B, and only 25% effective against the most common strain, H3N2.  
 
 ### Area plot
+
 Then our question becomes, who in 2018 was most at risk? To explore further, we must break down the population into approximately equally spaced age groups, and look at the total number of influenza like illnesses within each. The area plot paints a staggering picture. At first glance it’s difficult to miss that those below the age of 24 were at the highest risk of contracting the flu. At the flu’s peak, the number of flu cases of patients younger than 24 almost equal the sum of the number of flu cases of patients above age 24; with only around 13,000 cases in the age bracket above 24 as compared to almost 17,000 cases in the age bracket below 24.  
 
 We can also observe the same pattern for all the other flu seasons from 2010-2019. All of this information really gives us great insight into who needs to take the most precaution before next flu season. As a nation we need to be sure to take care of the younger generation during the next outbreak in order to mitigate the effect of the flu.  
@@ -245,7 +331,7 @@ ggplot(data = orig, aes(x=week, y=data))+
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
-The above result indicates our forecast follows the general trend. We tend to see the rate of hospital visits increase for the first few weeks in spring, 2019, and then the number drops and reaches the lowest during summer. Finally, the number increases again as it approaches winter. Also note our prediction for the peak is lower than the highest number of flu cases for winter, 2018. We hope this is actually true because according to the C.D.C officials, the 2018 flu season was the worst since the 2009 swine flu, and we definitely don’t want to see a huge outbreak again this year. This result verifies what we’ve discovered in our preliminary analysis, which is there’s usually a peak for the rate of flu visits, and the number typically increase during winter and spring. 
+The above result indicates our forecast follows the general trend. We tend to see the rate of hospital visits increase for the first few weeks in spring, 2019, and then the number drops and reaches the lowest during summer. Finally, the number increases again as it approaches winter. Also note our prediction for the peak is lower than the highest number of flu cases for winter, 2018. We hope this is actually true because according to the CDC officials, the 2018 flu season was the worst since the 2009 swine flu, and we definitely don’t want to see a huge outbreak again this year. This result verifies what we’ve discovered in our preliminary analysis, which is there’s usually a peak for the rate of flu visits, and the number typically increase during winter and spring. 
 
 ### Forecasting the ILI visits trend for all age groups in New York State
 
