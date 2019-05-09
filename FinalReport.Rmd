@@ -27,6 +27,33 @@ library(forecast)
 library(rsconnect)
 library(plotly)
 library(Hmisc)
+library(tseries)
+
+library(keras)
+install_keras()
+
+library(tidyverse)
+library(glue)
+library(forcats)
+
+# Time Series
+library(timetk)
+library(tidyquant)
+library(tibbletime)
+
+# Visualization
+library(cowplot)
+
+# Preprocessing
+library(recipes)
+
+# Sampling / Accuracy
+library(rsample)
+library(yardstick) 
+
+# Modeling
+library(keras)
+
 ```
 
 ```{r readData, echo=FALSE, message=FALSE}
@@ -263,7 +290,7 @@ adf.test(diff.log.visits)
 
 The p-value is 0.01, suggesting that the series is now stationary. Thus, we can check its ACF and PACF plot to select orders.  
 
-```{r adftest, echo=FALSE, fig.height=3}
+```{r adftest, echo=TRUE, fig.height=3}
 par(mfrow=c(1,2))
 acf(diff.log.visits, lag.max = 100, main=NA)
 pacf(diff.log.visits, lag.max = 100, main=NA)
@@ -326,7 +353,16 @@ datatable(data.table(
 Based on the above results, Holt-Winters doesn't seem to be a good fit because it has a much higher MSE compared with the previous ARIMA models. However, it also suggests that the training set with 2013-2017 data is more appropriate.
 
 ### 3. LSTM Models
-Saloni’s Model: put results in the next section
+
+A powerful type of neural network designed to handle sequence dependence is called recurrent neural networks. The Long Short-Term Memory network or LSTM network is a type of recurrent neural network used in deep learning because very large architectures can be successfully trained.
+
+Long Short Term Memory (LSTM) networks are special kind of Recurrent Neural Network (RNN) that are capable of learning long-term dependencies. In regular RNN small weights are multiplied over and over through several time steps and the gradients diminish asymptotically to zero- a condition known as vanishing gradient problem.
+
+The Long Short-Term Memory recurrent neural network has the promise of learning long sequences of observations.
+It seems a perfect match for time series forecasting, and in fact, it may be.
+
+We followed the blog by Richard Wanjohi [6] to understand how to implement times series forecasting using LSTM in R.
+
 
 
 # Results and Interpretation
